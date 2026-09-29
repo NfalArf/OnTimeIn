@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../data/task_repository.dart';
 import '../models/task.dart';
+import '../routes/app_routes.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
+import '../widgets/state_views.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/task_card.dart';
 
@@ -16,33 +19,58 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  final List<Task> _tasks = [
-    const Task(
-      title: 'Mobile Programming Assignment',
-      course: 'Pemrograman Mobile',
-      deadline: 'Tomorrow, 23:59',
-      priority: TaskPriority.high,
-    ),
-    const Task(
-      title: 'Database Report',
-      course: 'Basis Data',
-      deadline: '25 Sep, 23:59',
-      priority: TaskPriority.medium,
-    ),
-    const Task(
-      title: 'Read Chapter 4 and make notes',
-      course: 'Human Computer Interaction',
-      deadline: '27 Sep, 10:00',
-      priority: TaskPriority.normal,
-    ),
-    const Task(
-      title: 'Group presentation outline',
-      course: 'Software Engineering',
-      deadline: '30 Sep, 16:00',
-      priority: TaskPriority.normal,
-      isCompleted: true,
-    ),
-  ];
+
+  // [TAMBAHAN] Repository untuk mengambil data task.
+  final TaskRepository _repository = TaskRepository();
+
+  // [TAMBAHAN] Data task yang sudah berhasil dimuat.
+  List<Task> _tasks = [];
+
+  // [TAMBAHAN] Status loading.
+  bool _isLoading = false;
+
+  // [TAMBAHAN] Pesan error jika pengambilan data gagal.
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // [TAMBAHAN] Muat data ketika Home pertama kali dibuka.
+    _loadTasks();
+  }
+
+  // [TAMBAHAN] Mengambil data dari repository.
+  Future<void> _loadTasks() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final tasks = await _repository.fetchTasks();
+
+      // [TAMBAHAN] Pastikan widget masih terpasang setelah await.
+      if (!mounted) return;
+
+      setState(() {
+        _tasks = tasks;
+      });
+    } catch (error) {
+      // [TAMBAHAN] Pastikan widget masih terpasang setelah proses async.
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,6 +125,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeContent() {
+    // [TAMBAHAN] Kondisi loading.
+    if (_isLoading) {
+      return const LoadingView();
+    }
+
+    // [TAMBAHAN] Kondisi error dengan tombol coba lagi.
+    if (_errorMessage != null) {
+      return ErrorView(message: _errorMessage!, onRetry: _loadTasks);
+    }
+
+    // [TAMBAHAN] Kondisi data kosong.
+    if (_tasks.isEmpty) {
+      return const EmptyView(message: 'Belum ada task.');
+    }
+
     final completedCount = _tasks.where((task) => task.isCompleted).length;
     final pendingCount = _tasks.length - completedCount;
 
@@ -137,6 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
           task: _tasks.first,
           isFeatured: true,
           onChanged: (value) => _toggleTask(0, value),
+          onTap: () => _openTaskDetail(_tasks.first),
         ),
         const SizedBox(height: AppSpacing.xxl),
         const _SectionHeading(title: 'Upcoming tasks'),
@@ -145,6 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
           TaskCard(
             task: _tasks[index],
             onChanged: (value) => _toggleTask(index, value),
+            onTap: () => _openTaskDetail(_tasks[index]),
           ),
           if (index < _tasks.length - 1) const SizedBox(height: AppSpacing.md),
         ],
@@ -185,7 +230,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _toggleTask(int index, bool? value) {
     if (value == null) return;
-    setState(() => _tasks[index] = _tasks[index].copyWith(isCompleted: value));
+
+    setState(() {
+      _tasks[index] = _tasks[index].copyWith(isCompleted: value);
+    });
+  }
+
+  // [TAMBAHAN LANGKAH 7]
+  void _openTaskDetail(Task task) {
+    Navigator.pushNamed(context, AppRoutes.detail, arguments: task);
   }
 
   void _showMessage(String message) {
