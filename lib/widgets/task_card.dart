@@ -10,88 +10,93 @@ class TaskCard extends StatelessWidget {
     super.key,
     required this.task,
     required this.onChanged,
+    this.onTap,
     this.isFeatured = false,
   });
 
   final Task task;
   final ValueChanged<bool?> onChanged;
+  final VoidCallback? onTap;
   final bool isFeatured;
 
   @override
   Widget build(BuildContext context) {
     final priority = _priorityStyle(task.priority);
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 200),
-      opacity: task.isCompleted ? 0.64 : 1,
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: isFeatured ? AppColors.coralSoft : AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSpacing.radius),
-          border: Border.all(
-            color: isFeatured
-                ? AppColors.coral.withValues(alpha: 0.35)
-                : AppColors.line,
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Checkbox(
-              value: task.isCompleted,
-              onChanged: onChanged,
-              activeColor: AppColors.success,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
-              ),
-              visualDensity: VisualDensity.compact,
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: task.isCompleted ? 0.64 : 1,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: isFeatured ? AppColors.coralSoft : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radius),
+            border: Border.all(
+              color: isFeatured
+                  ? AppColors.coral.withValues(alpha: 0.35)
+                  : AppColors.line,
             ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    task.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.body.copyWith(
-                      fontWeight: FontWeight.w700,
-                      decoration: task.isCompleted
-                          ? TextDecoration.lineThrough
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(task.course, style: AppTextStyles.caption),
-                  const SizedBox(height: AppSpacing.md),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.schedule_rounded,
-                        size: 15,
-                        color: priority.foreground,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: task.isCompleted,
+                onChanged: onChanged,
+                activeColor: AppColors.success,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body.copyWith(
+                        fontWeight: FontWeight.w700,
+                        decoration: task.isCompleted
+                            ? TextDecoration.lineThrough
+                            : null,
                       ),
-                      const SizedBox(width: AppSpacing.xs),
-                      Expanded(
-                        child: Text(
-                          task.deadline,
-                          style: AppTextStyles.caption.copyWith(
-                            color: priority.foreground,
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(task.course, style: AppTextStyles.caption),
+                    const SizedBox(height: AppSpacing.md),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.schedule_rounded,
+                          size: 15,
+                          color: priority.foreground,
+                        ),
+                        const SizedBox(width: AppSpacing.xs),
+                        Expanded(
+                          child: Text(
+                            task.deadline,
+                            style: AppTextStyles.caption.copyWith(
+                              color: priority.foreground,
+                            ),
                           ),
                         ),
-                      ),
-                      _PriorityPill(
-                        label: priority.label,
-                        color: priority.background,
-                        textColor: priority.foreground,
-                      ),
-                    ],
-                  ),
-                ],
+                        _PriorityPill(
+                          label: priority.label,
+                          color: priority.background,
+                          textColor: priority.foreground,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

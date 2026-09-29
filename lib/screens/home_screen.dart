@@ -1,14 +1,26 @@
 import 'package:flutter/material.dart';
 
+import '../data/task_repository.dart';
 import '../models/task.dart';
+import '../routes/app_routes.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/task_card.dart';
+import '../widgets/state_views.dart';
+
+enum ViewStatus { loading, success, error }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.repository = const TaskRepository(),
+    this.simulateError = false,
+  });
+
+  final TaskRepository repository;
+  final bool simulateError;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -16,33 +28,46 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  final List<Task> _tasks = [
-    const Task(
-      title: 'Mobile Programming Assignment',
-      course: 'Pemrograman Mobile',
-      deadline: 'Tomorrow, 23:59',
-      priority: TaskPriority.high,
-    ),
-    const Task(
-      title: 'Database Report',
-      course: 'Basis Data',
-      deadline: '25 Sep, 23:59',
-      priority: TaskPriority.medium,
-    ),
-    const Task(
-      title: 'Read Chapter 4 and make notes',
-      course: 'Human Computer Interaction',
-      deadline: '27 Sep, 10:00',
-      priority: TaskPriority.normal,
-    ),
-    const Task(
-      title: 'Group presentation outline',
-      course: 'Software Engineering',
-      deadline: '30 Sep, 16:00',
-      priority: TaskPriority.normal,
-      isCompleted: true,
-    ),
-  ];
+  late final TaskRepository _repository = widget.repository;
+  late final bool _simulateError = widget.simulateError;
+  ViewStatus _status = ViewStatus.loading;
+  List<Task> _tasks = [];
+  String _errorMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
+  }
+
+  Future<void> _loadTasks() async {
+    setState(() {
+      _status = ViewStatus.loading;
+      _errorMessage = '';
+    });
+
+    try {
+      final tasks = await _repository.fetchTasks(simulateError: _simulateError);
+      if (!mounted) return;
+
+      setState(() => _tasks = tasks);
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        // LOGIC PRAKTIKUM 2: tentukan state akhir setelah proses fetch selesai.
+        setState(() {
+          _status = _errorMessage.isEmpty
+              ? ViewStatus.success
+              : ViewStatus.error;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,6 +122,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeContent() {
+    switch (_status) {
+      case ViewStatus.loading:
+        return const LoadingView();
+      case ViewStatus.error:
+        return ErrorView(message: _errorMessage, onRetry: _loadTasks);
+      case ViewStatus.success:
+        if (_tasks.isEmpty) return const EmptyView();
+        return _buildTaskContent();
+    }
+  }
+
+  Widget _buildTaskContent() {
     final completedCount = _tasks.where((task) => task.isCompleted).length;
     final pendingCount = _tasks.length - completedCount;
 
@@ -136,6 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
         TaskCard(
           task: _tasks.first,
           isFeatured: true,
+          onTap: () => _openTask(_tasks.first),
           onChanged: (value) => _toggleTask(0, value),
         ),
         const SizedBox(height: AppSpacing.xxl),
@@ -144,6 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
         for (var index = 1; index < _tasks.length; index++) ...[
           TaskCard(
             task: _tasks[index],
+            onTap: () => _openTask(_tasks[index]),
             onChanged: (value) => _toggleTask(index, value),
           ),
           if (index < _tasks.length - 1) const SizedBox(height: AppSpacing.md),
@@ -186,6 +225,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void _toggleTask(int index, bool? value) {
     if (value == null) return;
     setState(() => _tasks[index] = _tasks[index].copyWith(isCompleted: value));
+  }
+
+  void _openTask(Task task) {
+    Navigator.pushNamed(context, AppRoutes.detail, arguments: task);
   }
 
   void _showMessage(String message) {
