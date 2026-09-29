@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../data/task_repository.dart';
 import '../models/task.dart';
+import '../routes/app_routes.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
+import '../widgets/state_views.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/task_card.dart';
 
+enum ViewStatus { loading, success, error }
+
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.simulateError = false});
+
+  final bool simulateError;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -16,33 +23,47 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  final List<Task> _tasks = [
-    const Task(
-      title: 'Mobile Programming Assignment',
-      course: 'Pemrograman Mobile',
-      deadline: 'Tomorrow, 23:59',
-      priority: TaskPriority.high,
-    ),
-    const Task(
-      title: 'Database Report',
-      course: 'Basis Data',
-      deadline: '25 Sep, 23:59',
-      priority: TaskPriority.medium,
-    ),
-    const Task(
-      title: 'Read Chapter 4 and make notes',
-      course: 'Human Computer Interaction',
-      deadline: '27 Sep, 10:00',
-      priority: TaskPriority.normal,
-    ),
-    const Task(
-      title: 'Group presentation outline',
-      course: 'Software Engineering',
-      deadline: '30 Sep, 16:00',
-      priority: TaskPriority.normal,
-      isCompleted: true,
-    ),
-  ];
+  final TaskRepository _repository = TaskRepository();
+  List<Task> _tasks = [];
+  ViewStatus _status = ViewStatus.loading;
+  String? _errorMessage;
+  bool _isLoading = true;
+  late bool _simulateError;
+
+  @override
+  void initState() {
+    super.initState();
+    _simulateError = widget.simulateError;
+    _loadTasks();
+  }
+
+  // LOGIC PRAKTIKUM 2: memuat data task dari repository.
+  Future<void> _loadTasks() async {
+    setState(() {
+      _status = ViewStatus.loading;
+      _isLoading = true;
+    });
+
+    try {
+      final tasks = await _repository.fetchTasks(simulateError: _simulateError);
+      if (!mounted) return;
+
+      setState(() {
+        _tasks = tasks;
+        _errorMessage = null;
+        _status = ViewStatus.success;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+        _status = ViewStatus.error;
+      });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -133,20 +154,36 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: AppSpacing.xxl),
         _SectionHeading(title: 'Closest deadline', actionLabel: 'View all'),
         const SizedBox(height: AppSpacing.md),
-        TaskCard(
-          task: _tasks.first,
-          isFeatured: true,
-          onChanged: (value) => _toggleTask(0, value),
-        ),
-        const SizedBox(height: AppSpacing.xxl),
-        const _SectionHeading(title: 'Upcoming tasks'),
-        const SizedBox(height: AppSpacing.md),
-        for (var index = 1; index < _tasks.length; index++) ...[
+        if (_isLoading)
+          const LoadingView()
+        else if (_status == ViewStatus.error)
+          ErrorView(
+            message: _errorMessage ?? 'Gagal memuat data task.',
+            onRetry: _loadTasks,
+          )
+        else if (_tasks.isEmpty)
+          const EmptyView()
+        else ...[
           TaskCard(
-            task: _tasks[index],
-            onChanged: (value) => _toggleTask(index, value),
+            task: _tasks.first,
+            isFeatured: true,
+            onChanged: (value) => _toggleTask(0, value),
+            onTap: () => _openTask(_tasks.first),
           ),
-          if (index < _tasks.length - 1) const SizedBox(height: AppSpacing.md),
+          if (_tasks.length > 1) ...[
+            const SizedBox(height: AppSpacing.xxl),
+            const _SectionHeading(title: 'Upcoming tasks'),
+            const SizedBox(height: AppSpacing.md),
+            for (var index = 1; index < _tasks.length; index++) ...[
+              TaskCard(
+                task: _tasks[index],
+                onChanged: (value) => _toggleTask(index, value),
+                onTap: () => _openTask(_tasks[index]),
+              ),
+              if (index < _tasks.length - 1)
+                const SizedBox(height: AppSpacing.md),
+            ],
+          ],
         ],
       ],
     );
@@ -186,6 +223,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void _toggleTask(int index, bool? value) {
     if (value == null) return;
     setState(() => _tasks[index] = _tasks[index].copyWith(isCompleted: value));
+  }
+
+  void _openTask(Task task) {
+    Navigator.pushNamed(context, AppRoutes.detail, arguments: task);
   }
 
   void _showMessage(String message) {
