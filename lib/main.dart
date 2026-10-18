@@ -3,8 +3,14 @@ import 'package:flutter/material.dart';
 import 'routes/app_routes.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_text_styles.dart';
+import 'services/notification_service.dart';
 
-void main() {
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await NotificationService.instance.initialize();
+
   runApp(const OnTimeInApp());
 }
 

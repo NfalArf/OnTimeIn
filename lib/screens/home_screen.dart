@@ -14,6 +14,8 @@ import '../widgets/task_card.dart';
 import 'add_task_screen.dart';
 import 'courses.screen.dart';
 import '../data/course_repository.dart';
+import '../services/notification_service.dart';
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -73,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   
+
 Future<void> _addTask() async {
   final newTask = await Navigator.push<Task>(
     context,
@@ -83,15 +86,34 @@ Future<void> _addTask() async {
 
   if (!mounted || newTask == null) return;
 
+  final taskId = _tasks.isEmpty
+      ? 1
+      : _tasks
+              .map((task) => task.id)
+              .reduce((a, b) => a > b ? a : b) +
+          1;
+
+  final taskWithId = newTask.copyWith(id: taskId);
+
   setState(() {
-    _tasks.add(newTask);
+    _tasks.add(taskWithId);
     _tasks.sort(
       (a, b) => a.deadline.compareTo(b.deadline),
     );
   });
 
+  // Jadwalkan pengingat setelah setState selesai.
+  await NotificationService.instance.scheduleDeadlineReminders(
+    taskId: taskWithId.id,
+    taskTitle: taskWithId.title,
+    deadline: taskWithId.deadline,
+  );
+
+  if (!mounted) return;
+
   _showMessage('Task berhasil ditambahkan!');
 }
+
 
 
   void _toggleTask(Task task, bool? value) {
@@ -154,6 +176,7 @@ void _openAllTasks() {
   }
 
   
+
 Future<void> _editTask(Task task) async {
   final updatedTask = await Navigator.push<Task>(
     context,
@@ -170,15 +193,28 @@ Future<void> _editTask(Task task) async {
 
   if (index == -1) return;
 
+  // Pertahankan ID tugas agar notifikasinya tetap terhubung.
+  final taskWithId = updatedTask.copyWith(id: task.id);
+
   setState(() {
-    _tasks[index] = updatedTask;
+    _tasks[index] = taskWithId;
     _tasks.sort(
       (a, b) => a.deadline.compareTo(b.deadline),
     );
   });
 
+  await NotificationService.instance.scheduleDeadlineReminders(
+    taskId: taskWithId.id,
+    taskTitle: taskWithId.title,
+    deadline: taskWithId.deadline,
+  );
+
+
+  if (!mounted) return;
+
   _showMessage('Task berhasil diperbarui!');
 }
+
 
   
 Future<void> _deleteTask(Task task) async {
@@ -216,8 +252,10 @@ Future<void> _deleteTask(Task task) async {
   if (index == -1) return;
 
   setState(() {
-    _tasks.removeAt(index);
-  });
+  _tasks.removeAt(index);
+});
+
+await NotificationService.instance.cancelReminders(task.id);
 
   _showMessage('Task berhasil dihapus!');
 }

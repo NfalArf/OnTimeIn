@@ -7,9 +7,11 @@ class Task {
     required this.course,
     required this.deadline,
     required this.priority,
+    this.id = 0,
     this.isCompleted = false,
   });
 
+  final int id;
   final String title;
   final String course;
   final DateTime deadline;
@@ -17,6 +19,7 @@ class Task {
   final bool isCompleted;
 
   Task copyWith({
+    int? id,
     String? title,
     String? course,
     DateTime? deadline,
@@ -24,6 +27,7 @@ class Task {
     bool? isCompleted,
   }) {
     return Task(
+      id: id ?? this.id,
       title: title ?? this.title,
       course: course ?? this.course,
       deadline: deadline ?? this.deadline,
