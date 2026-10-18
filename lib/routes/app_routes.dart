@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import '../models/task.dart';
@@ -39,12 +38,11 @@ class AppRoutes {
           settings: settings,
         );
 
-
       case detail:
         final args = settings.arguments;
 
         if (args is Task) {
-          return MaterialPageRoute<void>(
+          return MaterialPageRoute<Task>(
             builder: (_) => DetailScreen(task: args),
             settings: settings,
           );

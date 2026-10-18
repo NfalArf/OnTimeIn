@@ -1,10 +1,10 @@
-
 import 'package:flutter/material.dart';
 
 import '../models/task.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
+import 'scratchpad_sketch.dart';
 
 class TaskCard extends StatelessWidget {
   const TaskCard({
@@ -15,6 +15,9 @@ class TaskCard extends StatelessWidget {
     this.isFeatured = false,
     this.onEdit,
     this.onDelete,
+    this.onScratchpadTap,
+    this.onScratchpadDelete,
+    this.onFocusTap,
   });
 
   final Task task;
@@ -23,6 +26,9 @@ class TaskCard extends StatelessWidget {
   final bool isFeatured;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onScratchpadTap;
+  final VoidCallback? onScratchpadDelete;
+  final VoidCallback? onFocusTap;
 
   String _formatDeadline(DateTime deadline) {
     final day = deadline.day.toString().padLeft(2, '0');
@@ -91,13 +97,9 @@ class TaskCard extends StatelessWidget {
             Expanded(
               child: InkWell(
                 onTap: onTap,
-                borderRadius: BorderRadius.circular(
-                  AppSpacing.smallRadius,
-                ),
+                borderRadius: BorderRadius.circular(AppSpacing.smallRadius),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: AppSpacing.xs,
-                  ),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -113,10 +115,7 @@ class TaskCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        task.course,
-                        style: AppTextStyles.caption,
-                      ),
+                      Text(task.course, style: AppTextStyles.caption),
                       const SizedBox(height: AppSpacing.md),
                       Row(
                         children: [
@@ -142,6 +141,141 @@ class TaskCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (task.scratchpad case final scratchpad?
+                          when scratchpad.hasContent) ...[
+                        const SizedBox(height: AppSpacing.md),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          decoration: BoxDecoration(
+                            color: AppColors.primarySoft.withValues(
+                              alpha: 0.55,
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.smallRadius,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Scratchpad',
+                                style: AppTextStyles.overline.copyWith(
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              if (scratchpad.idea.trim().isNotEmpty) ...[
+                                const SizedBox(height: AppSpacing.xs),
+                                Text(
+                                  scratchpad.idea.trim(),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: AppColors.ink,
+                                  ),
+                                ),
+                              ],
+                              if (scratchpad.strokes.isNotEmpty) ...[
+                                const SizedBox(height: AppSpacing.sm),
+                                ScratchpadSketch(
+                                  strokes: scratchpad.strokes,
+                                  width: double.infinity,
+                                  height: 88,
+                                ),
+                              ],
+                              if (scratchpad.reference.trim().isNotEmpty ||
+                                  scratchpad.referenceUrl.trim().isNotEmpty ||
+                                  scratchpad.strokes.isNotEmpty) ...[
+                                const SizedBox(height: AppSpacing.xs),
+                                Wrap(
+                                  spacing: AppSpacing.md,
+                                  children: [
+                                    if (scratchpad.reference.trim().isNotEmpty)
+                                      const _ScratchpadDetail(
+                                        icon: Icons.notes_rounded,
+                                        label: 'Referensi',
+                                      ),
+                                    if (scratchpad.referenceUrl
+                                        .trim()
+                                        .isNotEmpty)
+                                      const _ScratchpadDetail(
+                                        icon: Icons.link_rounded,
+                                        label: 'Tautan',
+                                      ),
+                                    if (scratchpad.strokes.isNotEmpty)
+                                      _ScratchpadDetail(
+                                        icon: Icons.draw_outlined,
+                                        label:
+                                            '${scratchpad.strokes.length} sketsa',
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (onScratchpadTap != null ||
+                          onScratchpadDelete != null ||
+                          onFocusTap != null) ...[
+                        const SizedBox(height: AppSpacing.xs),
+                        Wrap(
+                          spacing: AppSpacing.xs,
+                          children: [
+                            if (onScratchpadTap != null)
+                              TextButton.icon(
+                                onPressed: onScratchpadTap,
+                                icon: const Icon(
+                                  Icons.edit_note_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  task.scratchpad?.hasContent == true
+                                      ? 'Edit Scratchpad'
+                                      : 'Scratchpad',
+                                ),
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.sm,
+                                  ),
+                                ),
+                              ),
+                            if (onScratchpadDelete != null &&
+                                task.scratchpad?.hasContent == true)
+                              TextButton.icon(
+                                onPressed: onScratchpadDelete,
+                                icon: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 18,
+                                ),
+                                label: const Text('Hapus Scratchpad'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppColors.coral,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.sm,
+                                  ),
+                                ),
+                              ),
+                            if (onFocusTap != null)
+                              TextButton.icon(
+                                onPressed: onFocusTap,
+                                icon: const Icon(
+                                  Icons.timer_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Focus'),
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.sm,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -164,12 +298,30 @@ class TaskCard extends StatelessWidget {
   }
 }
 
+class _ScratchpadDetail extends StatelessWidget {
+  const _ScratchpadDetail({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: AppColors.primary),
+        const SizedBox(width: AppSpacing.xs),
+        Text(
+          label,
+          style: AppTextStyles.caption.copyWith(color: AppColors.primary),
+        ),
+      ],
+    );
+  }
+}
+
 class _PriorityStyle {
-  const _PriorityStyle(
-    this.label,
-    this.background,
-    this.foreground,
-  );
+  const _PriorityStyle(this.label, this.background, this.foreground);
 
   final String label;
   final Color background;

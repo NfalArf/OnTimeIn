@@ -40,9 +40,9 @@ class Validators {
   // Validator umum untuk panjang minimal.
   static String? minLength(
     String? value,
-    int minimum,
-    {String fieldName = 'Field'}
-  ) {
+    int minimum, {
+    String fieldName = 'Field',
+  }) {
     final requiredError = required(value, fieldName: fieldName);
     if (requiredError != null) {
       return requiredError;
@@ -50,6 +50,23 @@ class Validators {
 
     if (value!.trim().length < minimum) {
       return '$fieldName minimal $minimum karakter';
+    }
+
+    return null;
+  }
+
+  static String? optionalUrl(String? value) {
+    final url = value?.trim() ?? '';
+    if (url.isEmpty) return null;
+
+    final uri = Uri.tryParse(url);
+    if (uri == null ||
+        !uri.hasAuthority ||
+        (uri.scheme != 'http' && uri.scheme != 'https') ||
+        uri.host.isEmpty ||
+        uri.host.contains(' ') ||
+        (uri.host != 'localhost' && !uri.host.contains('.'))) {
+      return 'Masukkan URL valid (contoh: https://contoh.com).';
     }
 
     return null;

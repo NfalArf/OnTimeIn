@@ -1,3 +1,5 @@
+import 'focus_log.dart';
+import 'scratchpad.dart';
 
 enum TaskPriority { high, medium, normal }
 
@@ -9,6 +11,8 @@ class Task {
     required this.priority,
     this.id = 0,
     this.isCompleted = false,
+    this.scratchpad,
+    this.focusLogs = const [],
   });
 
   final int id;
@@ -17,6 +21,8 @@ class Task {
   final DateTime deadline;
   final TaskPriority priority;
   final bool isCompleted;
+  final Scratchpad? scratchpad;
+  final List<FocusLog> focusLogs;
 
   Task copyWith({
     int? id,
@@ -25,6 +31,9 @@ class Task {
     DateTime? deadline,
     TaskPriority? priority,
     bool? isCompleted,
+    Scratchpad? scratchpad,
+    bool clearScratchpad = false,
+    List<FocusLog>? focusLogs,
   }) {
     return Task(
       id: id ?? this.id,
@@ -33,6 +42,8 @@ class Task {
       deadline: deadline ?? this.deadline,
       priority: priority ?? this.priority,
       isCompleted: isCompleted ?? this.isCompleted,
+      scratchpad: clearScratchpad ? null : scratchpad ?? this.scratchpad,
+      focusLogs: focusLogs ?? this.focusLogs,
     );
   }
 }
