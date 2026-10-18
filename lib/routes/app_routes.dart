@@ -1,6 +1,8 @@
+
 import 'package:flutter/material.dart';
 
 import '../models/task.dart';
+import '../screens/add_task_screen.dart';
 import '../screens/catatan_form_screen.dart';
 import '../screens/detail_screen.dart';
 import '../screens/home_screen.dart';
@@ -12,12 +14,11 @@ class AppRoutes {
 
   static const String login = '/login';
   static const String home = '/home';
-  // [TAMBAHAN LANGKAH 7]
+  static const String addTask = '/add-task';
+  static const String allTasks = '/all-tasks';
   static const String detail = '/detail';
-  // [TAMBAHAN LANGKAH 8]
   static const String catatanForm = '/catatan-form';
 
-  // [TAMBAHAN LANGKAH 6]
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case login:
@@ -25,14 +26,23 @@ class AppRoutes {
           builder: (_) => const LoginScreen(),
           settings: settings,
         );
+
       case home:
         return MaterialPageRoute<void>(
           builder: (_) => const HomeScreen(),
           settings: settings,
         );
-      // [TAMBAHAN LANGKAH 7]
+
+      case addTask:
+        return MaterialPageRoute<dynamic>(
+          builder: (_) => const AddTaskScreen(),
+          settings: settings,
+        );
+
+
       case detail:
         final args = settings.arguments;
+
         if (args is Task) {
           return MaterialPageRoute<void>(
             builder: (_) => DetailScreen(task: args),
@@ -40,18 +50,18 @@ class AppRoutes {
           );
         }
         return null;
-      // [TAMBAHAN LANGKAH 8]
+
       case catatanForm:
         return MaterialPageRoute<String>(
           builder: (_) => const CatatanFormScreen(),
           settings: settings,
         );
+
       default:
         return null;
     }
   }
 
-  // [TAMBAHAN LANGKAH 6]
   static Route<dynamic> onUnknownRoute(RouteSettings settings) {
     return MaterialPageRoute<void>(
       builder: (_) => NotFoundScreen(routeName: settings.name),

@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 import '../models/task.dart';
@@ -12,16 +13,54 @@ class TaskCard extends StatelessWidget {
     required this.onChanged,
     this.onTap,
     this.isFeatured = false,
+    this.onEdit,
+    this.onDelete,
   });
 
   final Task task;
   final ValueChanged<bool?> onChanged;
   final VoidCallback? onTap;
   final bool isFeatured;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+
+  String _formatDeadline(DateTime deadline) {
+    final day = deadline.day.toString().padLeft(2, '0');
+    final month = deadline.month.toString().padLeft(2, '0');
+    final year = deadline.year;
+    final hour = deadline.hour.toString().padLeft(2, '0');
+    final minute = deadline.minute.toString().padLeft(2, '0');
+
+    return '$day/$month/$year, $hour:$minute';
+  }
+
+  _PriorityStyle _priorityStyle(TaskPriority priority) {
+    switch (priority) {
+      case TaskPriority.high:
+        return const _PriorityStyle(
+          'Urgent',
+          AppColors.coralSoft,
+          AppColors.coral,
+        );
+      case TaskPriority.medium:
+        return const _PriorityStyle(
+          'Medium',
+          AppColors.amberSoft,
+          Color(0xFF9B6A00),
+        );
+      case TaskPriority.normal:
+        return const _PriorityStyle(
+          'Normal',
+          AppColors.primarySoft,
+          AppColors.primary,
+        );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final priority = _priorityStyle(task.priority);
+
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 200),
       opacity: task.isCompleted ? 0.64 : 1,
@@ -52,82 +91,85 @@ class TaskCard extends StatelessWidget {
             Expanded(
               child: InkWell(
                 onTap: onTap,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.body.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: task.isCompleted
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(task.course, style: AppTextStyles.caption),
-                    const SizedBox(height: AppSpacing.md),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.schedule_rounded,
-                          size: 15,
-                          color: priority.foreground,
+                borderRadius: BorderRadius.circular(
+                  AppSpacing.smallRadius,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: AppSpacing.xs,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.body.copyWith(
+                          fontWeight: FontWeight.w700,
+                          decoration: task.isCompleted
+                              ? TextDecoration.lineThrough
+                              : null,
                         ),
-                        const SizedBox(width: AppSpacing.xs),
-                        Expanded(
-                          child: Text(
-                            task.deadline,
-                            style: AppTextStyles.caption.copyWith(
-                              color: priority.foreground,
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        task.course,
+                        style: AppTextStyles.caption,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.schedule_rounded,
+                            size: 15,
+                            color: priority.foreground,
+                          ),
+                          const SizedBox(width: AppSpacing.xs),
+                          Expanded(
+                            child: Text(
+                              _formatDeadline(task.deadline),
+                              style: AppTextStyles.caption.copyWith(
+                                color: priority.foreground,
+                              ),
                             ),
                           ),
-                        ),
-                        _PriorityPill(
-                          label: priority.label,
-                          color: priority.background,
-                          textColor: priority.foreground,
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: AppSpacing.xs),
+                          _PriorityPill(
+                            label: priority.label,
+                            color: priority.background,
+                            textColor: priority.foreground,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
+            ),
+            IconButton(
+              onPressed: onEdit,
+              tooltip: 'Edit tugas',
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              onPressed: onDelete,
+              tooltip: 'Hapus tugas',
+              icon: const Icon(Icons.delete_outline_rounded),
             ),
           ],
         ),
       ),
     );
   }
-
-  _PriorityStyle _priorityStyle(TaskPriority value) {
-    switch (value) {
-      case TaskPriority.high:
-        return const _PriorityStyle(
-          'Urgent',
-          AppColors.coralSoft,
-          AppColors.coral,
-        );
-      case TaskPriority.medium:
-        return const _PriorityStyle(
-          'Medium',
-          AppColors.amberSoft,
-          Color(0xFF9B6A00),
-        );
-      case TaskPriority.normal:
-        return const _PriorityStyle(
-          'Normal',
-          AppColors.primarySoft,
-          AppColors.primary,
-        );
-    }
-  }
 }
 
 class _PriorityStyle {
-  const _PriorityStyle(this.label, this.background, this.foreground);
+  const _PriorityStyle(
+    this.label,
+    this.background,
+    this.foreground,
+  );
 
   final String label;
   final Color background;

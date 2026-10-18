@@ -1,14 +1,19 @@
+
 import 'package:flutter/material.dart';
 
 import '../data/task_repository.dart';
 import '../models/task.dart';
 import '../routes/app_routes.dart';
+import '../screens/all_tasks_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/state_views.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/task_card.dart';
+import 'add_task_screen.dart';
+import 'courses.screen.dart';
+import '../data/course_repository.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,27 +25,20 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  // [TAMBAHAN] Repository untuk mengambil data task.
   final TaskRepository _repository = TaskRepository();
+  final CourseRepository _courseRepository = CourseRepository();
 
-  // [TAMBAHAN] Data task yang sudah berhasil dimuat.
   List<Task> _tasks = [];
 
-  // [TAMBAHAN] Status loading.
   bool _isLoading = false;
-
-  // [TAMBAHAN] Pesan error jika pengambilan data gagal.
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-
-    // [TAMBAHAN] Muat data ketika Home pertama kali dibuka.
     _loadTasks();
   }
-
-  // [TAMBAHAN] Mengambil data dari repository.
+  
   Future<void> _loadTasks() async {
     setState(() {
       _isLoading = true;
@@ -50,18 +48,20 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final tasks = await _repository.fetchTasks();
 
-      // [TAMBAHAN] Pastikan widget masih terpasang setelah await.
       if (!mounted) return;
 
       setState(() {
-        _tasks = tasks;
+        _tasks = List<Task>.of(tasks);
+        _tasks.sort(
+          (a, b) => a.deadline.compareTo(b.deadline),
+        );
       });
     } catch (error) {
-      // [TAMBAHAN] Pastikan widget masih terpasang setelah proses async.
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+        _errorMessage =
+            error.toString().replaceFirst('Exception: ', '');
       });
     } finally {
       if (mounted) {
@@ -72,6 +72,158 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  
+Future<void> _addTask() async {
+  final newTask = await Navigator.push<Task>(
+    context,
+    MaterialPageRoute<Task>(
+      builder: (_) => const AddTaskScreen(),
+    ),
+  );
+
+  if (!mounted || newTask == null) return;
+
+  setState(() {
+    _tasks.add(newTask);
+    _tasks.sort(
+      (a, b) => a.deadline.compareTo(b.deadline),
+    );
+  });
+
+  _showMessage('Task berhasil ditambahkan!');
+}
+
+
+  void _toggleTask(Task task, bool? value) {
+    if (value == null) return;
+
+    final index = _tasks.indexWhere(
+      (item) => identical(item, task),
+    );
+
+    if (index == -1) return;
+
+    setState(() {
+      _tasks[index] = task.copyWith(isCompleted: value);
+    });
+  }
+
+  
+void _openAllTasks() {
+  Navigator.push(
+    context,
+    MaterialPageRoute<void>(
+      builder: (_) => AllTasksScreen(
+        tasks: _tasks,
+        onTaskChanged: (oldTask, updatedTask) {
+          final index = _tasks.indexWhere(
+            (item) => identical(item, oldTask),
+          );
+
+          if (index == -1) return;
+
+          setState(() {
+            _tasks[index] = updatedTask;
+            _tasks.sort(
+              (a, b) => a.deadline.compareTo(b.deadline),
+            );
+          });
+        },
+        onTaskTap: _openTaskDetail,
+        onTaskDeleted: _deleteTask,
+      ),
+    ),
+  );
+}
+
+
+  void _openTaskDetail(Task task) {
+    Navigator.pushNamed(
+      context,
+      AppRoutes.detail,
+      arguments: task,
+    );
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+  }
+
+  
+Future<void> _editTask(Task task) async {
+  final updatedTask = await Navigator.push<Task>(
+    context,
+    MaterialPageRoute<Task>(
+      builder: (_) => AddTaskScreen(initialTask: task),
+    ),
+  );
+
+  if (!mounted || updatedTask == null) return;
+
+  final index = _tasks.indexWhere(
+    (item) => identical(item, task),
+  );
+
+  if (index == -1) return;
+
+  setState(() {
+    _tasks[index] = updatedTask;
+    _tasks.sort(
+      (a, b) => a.deadline.compareTo(b.deadline),
+    );
+  });
+
+  _showMessage('Task berhasil diperbarui!');
+}
+
+  
+Future<void> _deleteTask(Task task) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Hapus Task?'),
+      content: Text(
+        'Task "${task.title}" akan dihapus. '
+        'Apakah kamu yakin?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(dialogContext, false);
+          },
+          child: const Text('Batal'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.pop(dialogContext, true);
+          },
+          child: const Text('Hapus'),
+        ),
+      ],
+    ),
+  );
+
+  if (!mounted || confirmed != true) return;
+
+  final index = _tasks.indexWhere(
+    (item) => identical(item, task),
+  );
+
+  if (index == -1) return;
+
+  setState(() {
+    _tasks.removeAt(index);
+  });
+
+  _showMessage('Task berhasil dihapus!');
+}
+
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,17 +231,23 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: IndexedStack(
           index: _selectedIndex,
-          children: [
-            _buildHomeContent(),
-            for (final label in const ['Tasks', 'Focus', 'Group', 'Profile'])
-              _PlaceholderTab(label: label),
-          ],
+          
+children: [
+  _buildHomeContent(),
+  const _PlaceholderTab(label: 'Tasks'),
+  const _PlaceholderTab(label: 'Focus'),
+  CoursesScreen(repository: _courseRepository),
+  const _PlaceholderTab(label: 'Group'),
+  const _PlaceholderTab(label: 'Profile'),
+],
+
         ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
+        onDestinationSelected: (index) {
+          setState(() => _selectedIndex = index);
+        },
         backgroundColor: AppColors.surface,
         indicatorColor: AppColors.primarySoft,
         height: 70,
@@ -110,6 +268,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Focus',
           ),
           NavigationDestination(
+            icon: Icon(Icons.menu_book_outlined),
+            selectedIcon: Icon(Icons.menu_book),
+            label: 'Mata Kuliah',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.groups_outlined),
             selectedIcon: Icon(Icons.groups),
             label: 'Group',
@@ -125,22 +288,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeContent() {
-    // [TAMBAHAN] Kondisi loading.
-    if (_isLoading) {
-      return const LoadingView();
-    }
+    final orderedTasks = List<Task>.of(_tasks)
+      ..sort(
+        (a, b) => a.deadline.compareTo(b.deadline),
+      );
 
-    // [TAMBAHAN] Kondisi error dengan tombol coba lagi.
-    if (_errorMessage != null) {
-      return ErrorView(message: _errorMessage!, onRetry: _loadTasks);
-    }
+    final completedCount =
+        _tasks.where((task) => task.isCompleted).length;
 
-    // [TAMBAHAN] Kondisi data kosong.
-    if (_tasks.isEmpty) {
-      return const EmptyView(message: 'Belum ada task.');
-    }
-
-    final completedCount = _tasks.where((task) => task.isCompleted).length;
     final pendingCount = _tasks.length - completedCount;
 
     return ListView(
@@ -153,45 +308,92 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         _buildHeader(),
         const SizedBox(height: AppSpacing.xl),
-        SummaryCard(
-          pendingCount: pendingCount,
-          completedCount: completedCount,
-          totalCount: _tasks.length,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        FilledButton.icon(
-          onPressed: () =>
-              _showMessage('Add Task flow will be connected later.'),
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Add Task'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.ink,
-            foregroundColor: Colors.white,
-            minimumSize: const Size.fromHeight(52),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppSpacing.smallRadius),
+
+        if (_tasks.isNotEmpty) ...[
+          SummaryCard(
+            pendingCount: pendingCount,
+            completedCount: completedCount,
+            totalCount: _tasks.length,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+        ],
+
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _addTask,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add Task'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.ink,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  AppSpacing.smallRadius,
+                ),
+              ),
             ),
           ),
         ),
+
         const SizedBox(height: AppSpacing.xxl),
-        _SectionHeading(title: 'Closest deadline', actionLabel: 'View all'),
-        const SizedBox(height: AppSpacing.md),
-        TaskCard(
-          task: _tasks.first,
-          isFeatured: true,
-          onChanged: (value) => _toggleTask(0, value),
-          onTap: () => _openTaskDetail(_tasks.first),
-        ),
-        const SizedBox(height: AppSpacing.xxl),
-        const _SectionHeading(title: 'Upcoming tasks'),
-        const SizedBox(height: AppSpacing.md),
-        for (var index = 1; index < _tasks.length; index++) ...[
-          TaskCard(
-            task: _tasks[index],
-            onChanged: (value) => _toggleTask(index, value),
-            onTap: () => _openTaskDetail(_tasks[index]),
+
+        if (_isLoading) ...[
+          const LoadingView(),
+        ] else if (_errorMessage != null) ...[
+          ErrorView(
+            message: _errorMessage!,
+            onRetry: _loadTasks,
           ),
-          if (index < _tasks.length - 1) const SizedBox(height: AppSpacing.md),
+        ] else if (orderedTasks.isEmpty) ...[
+          const EmptyView(
+            message: 'Belum ada task. Tambahkan task pertamamu!',
+          ),
+        ] else ...[
+          _SectionHeading(
+            title: 'Closest deadline',
+            actionLabel: 'View all',
+            onAction: _openAllTasks,
+          ),
+          const SizedBox(height: AppSpacing.md),
+
+          TaskCard(
+            task: orderedTasks.first,
+            isFeatured: true,
+            onChanged: (value) {
+              _toggleTask(orderedTasks.first, value);
+            },
+            onTap: () => _openTaskDetail(orderedTasks.first),
+            onEdit: () => _editTask(orderedTasks.first),
+            onDelete: () => _deleteTask(orderedTasks.first),
+          ),
+
+          if (orderedTasks.length > 1) ...[
+            const SizedBox(height: AppSpacing.xxl),
+            const _SectionHeading(
+              title: 'Upcoming tasks',
+            ),
+            const SizedBox(height: AppSpacing.md),
+
+            for (var index = 1;
+                index < orderedTasks.length;
+                index++) ...[
+              TaskCard(
+                task: orderedTasks[index],
+                onChanged: (value) {
+                  _toggleTask(orderedTasks[index], value);
+                },
+                onTap: () {
+                  _openTaskDetail(orderedTasks[index]);
+                },
+                onEdit: () => _editTask(orderedTasks[index]),
+                onDelete: () => _deleteTask(orderedTasks[index]),
+              ),
+              if (index < orderedTasks.length - 1)
+                const SizedBox(height: AppSpacing.md),
+            ],
+          ],
         ],
       ],
     );
@@ -205,21 +407,32 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Good Morning, Naufal', style: AppTextStyles.heading),
+              Text(
+                'Good Morning, Sir',
+                style: AppTextStyles.heading,
+              ),
               SizedBox(height: AppSpacing.sm),
-              Text('Let\'s get your tasks done.', style: AppTextStyles.body),
+              Text(
+                "Let's get your tasks done.",
+                style: AppTextStyles.body,
+              ),
             ],
           ),
         ),
         IconButton(
-          onPressed: () =>
-              _showMessage('Notifications will be connected later.'),
+          onPressed: () {
+            _showMessage(
+              'Notifications will be connected later.',
+            );
+          },
           tooltip: 'Notifications',
           style: IconButton.styleFrom(
             backgroundColor: AppColors.surface,
             foregroundColor: AppColors.ink,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppSpacing.smallRadius),
+              borderRadius: BorderRadius.circular(
+                AppSpacing.smallRadius,
+              ),
             ),
           ),
           icon: const Icon(Icons.notifications_none_rounded),
@@ -227,44 +440,37 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
-
-  void _toggleTask(int index, bool? value) {
-    if (value == null) return;
-
-    setState(() {
-      _tasks[index] = _tasks[index].copyWith(isCompleted: value);
-    });
-  }
-
-  // [TAMBAHAN LANGKAH 7]
-  void _openTaskDetail(Task task) {
-    Navigator.pushNamed(context, AppRoutes.detail, arguments: task);
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
 }
 
 class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({required this.title, this.actionLabel});
+  const _SectionHeading({
+    required this.title,
+    this.actionLabel,
+    this.onAction,
+  });
 
   final String title;
   final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: Text(title, style: AppTextStyles.title)),
+        Expanded(
+          child: Text(
+            title,
+            style: AppTextStyles.title,
+          ),
+        ),
         if (actionLabel != null)
           TextButton(
-            onPressed: () {},
+            onPressed: onAction,
             child: Text(
               actionLabel!,
-              style: const TextStyle(color: AppColors.primary),
+              style: const TextStyle(
+                color: AppColors.primary,
+              ),
             ),
           ),
       ],
@@ -273,7 +479,9 @@ class _SectionHeading extends StatelessWidget {
 }
 
 class _PlaceholderTab extends StatelessWidget {
-  const _PlaceholderTab({required this.label});
+  const _PlaceholderTab({
+    required this.label,
+  });
 
   final String label;
 
@@ -289,7 +497,10 @@ class _PlaceholderTab extends StatelessWidget {
             color: AppColors.primary,
           ),
           const SizedBox(height: AppSpacing.md),
-          Text('$label is coming next', style: AppTextStyles.title),
+          Text(
+            '$label is coming next',
+            style: AppTextStyles.title,
+          ),
           const SizedBox(height: AppSpacing.sm),
           const Text(
             'This prototype is focused on Home.',

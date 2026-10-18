@@ -1,3 +1,4 @@
+
 enum TaskPriority { high, medium, normal }
 
 class Task {
@@ -11,16 +12,22 @@ class Task {
 
   final String title;
   final String course;
-  final String deadline;
+  final DateTime deadline;
   final TaskPriority priority;
   final bool isCompleted;
 
-  Task copyWith({bool? isCompleted}) {
+  Task copyWith({
+    String? title,
+    String? course,
+    DateTime? deadline,
+    TaskPriority? priority,
+    bool? isCompleted,
+  }) {
     return Task(
-      title: title,
-      course: course,
-      deadline: deadline,
-      priority: priority,
+      title: title ?? this.title,
+      course: course ?? this.course,
+      deadline: deadline ?? this.deadline,
+      priority: priority ?? this.priority,
       isCompleted: isCompleted ?? this.isCompleted,
     );
   }
