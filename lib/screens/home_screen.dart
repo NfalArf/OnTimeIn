@@ -15,6 +15,7 @@ import 'add_task_screen.dart';
 import 'courses.screen.dart';
 import '../data/course_repository.dart';
 import '../services/notification_service.dart';
+import 'group/group_screen.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -275,7 +276,7 @@ children: [
   const _PlaceholderTab(label: 'Tasks'),
   const _PlaceholderTab(label: 'Focus'),
   CoursesScreen(repository: _courseRepository),
-  const _PlaceholderTab(label: 'Group'),
+  GroupScreen(tasks: _tasks),
   const _PlaceholderTab(label: 'Profile'),
 ],
 

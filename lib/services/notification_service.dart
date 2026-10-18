@@ -12,6 +12,7 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   
+
 Future<void> initialize() async {
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
@@ -29,21 +30,10 @@ Future<void> initialize() async {
       .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
 
-  // Meminta izin notifikasi biasa.
+
   await androidPlugin?.requestNotificationsPermission();
-
-  // Memeriksa akses alarm exact.
-  final canScheduleExact =
-      await androidPlugin?.canScheduleExactNotifications();
-
-  print('Izin alarm exact aktif: $canScheduleExact');
-
-  if (canScheduleExact != true) {
-    print('Akses alarm exact belum aktif. Membuka pengaturan izin.');
-
-    await androidPlugin?.requestExactAlarmsPermission();
-  }
 }
+
 
 
   Future<void> scheduleDeadlineReminders({
