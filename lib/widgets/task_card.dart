@@ -4,6 +4,7 @@ import '../models/task.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
+import '../utils/task_management.dart';
 import 'scratchpad_sketch.dart';
 
 class TaskCard extends StatelessWidget {
@@ -65,7 +66,7 @@ class TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final priority = _priorityStyle(task.priority);
+    final priority = _priorityStyle(TaskManagement.priorityFor(task));
 
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 200),

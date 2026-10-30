@@ -15,6 +15,7 @@ import 'add_task_screen.dart';
 import 'courses.screen.dart';
 import '../data/course_repository.dart';
 import '../services/notification_service.dart';
+import '../services/task_attachment_service.dart';
 import 'focus_timer_screen.dart';
 import 'scratchpad_screen.dart';
 import 'group/group_screen.dart';
@@ -36,6 +37,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isLoading = false;
   String? _errorMessage;
+
+  List<String> get _courseNames => {
+    ..._courseRepository.getCourses().map((course) => course.name),
+    ..._tasks.map((task) => task.course),
+  }.toList()..sort();
 
   @override
   void initState() {
@@ -76,7 +82,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _addTask() async {
     final newTask = await Navigator.push<Task>(
       context,
-      MaterialPageRoute<Task>(builder: (_) => const AddTaskScreen()),
+      MaterialPageRoute<Task>(
+        builder: (_) => AddTaskScreen(courseNames: _courseNames),
+      ),
     );
 
     if (!mounted || newTask == null) return;
@@ -122,15 +130,34 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute<void>(
         builder: (_) => AllTasksScreen(
           tasks: _tasks,
-          onTaskChanged: (oldTask, updatedTask) {
+          courseNames: _courseNames,
+          onTaskChanged: (oldTask, updatedTask) async {
             final index = _tasks.indexWhere((item) => identical(item, oldTask));
 
             if (index == -1) return;
 
+            final taskWithId = updatedTask.copyWith(id: oldTask.id);
             setState(() {
-              _tasks[index] = updatedTask;
+              _tasks[index] = taskWithId;
               _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
             });
+            if (oldTask.attachmentPath != taskWithId.attachmentPath) {
+              try {
+                await TaskAttachmentService.deletePhoto(oldTask.attachmentPath);
+              } on Exception catch (error) {
+                if (mounted) {
+                  _showMessage('Foto lama tidak dapat dihapus: $error');
+                }
+              }
+            }
+            if (oldTask.title != taskWithId.title ||
+                oldTask.deadline != taskWithId.deadline) {
+              await NotificationService.instance.scheduleDeadlineReminders(
+                taskId: taskWithId.id,
+                taskTitle: taskWithId.title,
+                deadline: taskWithId.deadline,
+              );
+            }
           },
           onTaskTap: _openTaskDetail,
           onTaskDeleted: _deleteTask,
@@ -228,7 +255,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _editTask(Task task) async {
     final updatedTask = await Navigator.push<Task>(
       context,
-      MaterialPageRoute<Task>(builder: (_) => AddTaskScreen(initialTask: task)),
+      MaterialPageRoute<Task>(
+        builder: (_) =>
+            AddTaskScreen(initialTask: task, courseNames: _courseNames),
+      ),
     );
 
     if (!mounted || updatedTask == null) return;
@@ -244,6 +274,14 @@ class _HomeScreenState extends State<HomeScreen> {
       _tasks[index] = taskWithId;
       _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
     });
+
+    if (task.attachmentPath != taskWithId.attachmentPath) {
+      try {
+        await TaskAttachmentService.deletePhoto(task.attachmentPath);
+      } on Exception catch (error) {
+        if (mounted) _showMessage('Foto lama tidak dapat dihapus: $error');
+      }
+    }
 
     await NotificationService.instance.scheduleDeadlineReminders(
       taskId: taskWithId.id,
@@ -292,9 +330,16 @@ class _HomeScreenState extends State<HomeScreen> {
       _tasks.removeAt(index);
     });
 
-    await NotificationService.instance.cancelReminders(task.id);
+    try {
+      await NotificationService.instance.cancelReminders(task.id);
+      await TaskAttachmentService.deletePhoto(task.attachmentPath);
+    } on Exception catch (error) {
+      if (mounted) {
+        _showMessage('Task dihapus, tetapi pembersihan data gagal: $error');
+      }
+    }
 
-    _showMessage('Task berhasil dihapus!');
+    if (mounted) _showMessage('Task berhasil dihapus!');
   }
 
   @override
@@ -309,7 +354,11 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildHomeContent(),
             const _PlaceholderTab(label: 'Tasks'),
             _buildFocusContent(),
-            CoursesScreen(repository: _courseRepository),
+            CoursesScreen(
+              repository: _courseRepository,
+              tasks: _tasks,
+              onCourseRenamed: _renameCourseOnTasks,
+            ),
             GroupScreen(tasks: _tasks),
             const _PlaceholderTab(label: 'Profile'),
           ],
@@ -361,7 +410,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHomeContent() {
     final orderedTasks = List<Task>.of(_tasks)
-      ..sort((a, b) => a.deadline.compareTo(b.deadline));
+      ..sort((a, b) {
+        if (a.isCompleted != b.isCompleted) {
+          return a.isCompleted ? 1 : -1;
+        }
+        return a.deadline.compareTo(b.deadline);
+      });
 
     final completedCount = _tasks.where((task) => task.isCompleted).length;
 
@@ -422,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
           TaskCard(
             task: orderedTasks.first,
-            isFeatured: true,
+            isFeatured: !orderedTasks.first.isCompleted,
             onChanged: (value) {
               _toggleTask(orderedTasks.first, value);
             },
@@ -462,6 +516,16 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ],
     );
+  }
+
+  void _renameCourseOnTasks(String oldName, String newName) {
+    setState(() {
+      for (var index = 0; index < _tasks.length; index++) {
+        if (_tasks[index].course == oldName) {
+          _tasks[index] = _tasks[index].copyWith(course: newName);
+        }
+      }
+    });
   }
 
   Widget _buildFocusContent() {

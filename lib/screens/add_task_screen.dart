@@ -1,16 +1,21 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../services/task_attachment_service.dart';
 import '../models/task.dart';
 import '../utils/validators.dart';
+import '../widgets/task_attachment_image.dart';
 
 class AddTaskScreen extends StatefulWidget {
   const AddTaskScreen({
     super.key,
     this.initialTask,
+    this.courseNames = const [],
   });
 
   final Task? initialTask;
+  final List<String> courseNames;
 
   @override
   State<AddTaskScreen> createState() => _AddTaskScreenState();
@@ -19,10 +24,10 @@ class AddTaskScreen extends StatefulWidget {
 class _AddTaskScreenState extends State<AddTaskScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
-  final _courseController = TextEditingController();
-
+  String? _course;
   DateTime? _deadline;
-  TaskPriority _priority = TaskPriority.normal;
+  XFile? _pendingPhoto;
+  bool _removePhoto = false;
 
   bool get _isEditing => widget.initialTask != null;
 
@@ -34,16 +39,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
     if (task != null) {
       _titleController.text = task.title;
-      _courseController.text = task.course;
+      _course = task.course;
       _deadline = task.deadline;
-      _priority = task.priority;
+    } else if (widget.courseNames.isNotEmpty) {
+      _course = widget.courseNames.first;
     }
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _courseController.dispose();
     super.dispose();
   }
 
@@ -70,7 +75,34 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
   }
 
-  void _saveTask() {
+  Future<void> _capturePhoto() async {
+    try {
+      final photo = await TaskAttachmentService.capturePhoto();
+      if (!mounted || photo == null) return;
+      setState(() {
+        _pendingPhoto = photo;
+        _removePhoto = false;
+      });
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.code == 'camera_access_denied'
+                ? 'Izin kamera ditolak. Aktifkan izin kamera di pengaturan.'
+                : 'Kamera tidak dapat diakses: ${error.message ?? error.code}',
+          ),
+        ),
+      );
+    } on Exception catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengambil foto: $error')));
+    }
+  }
+
+  Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (_deadline == null) {
@@ -82,23 +114,46 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       return;
     }
 
-    final task = Task(
-      title: _titleController.text.trim(),
-      course: _courseController.text.trim(),
-      deadline: _deadline!,
-      priority: _priority,
-      isCompleted: widget.initialTask?.isCompleted ?? false,
-    );
+    String? attachmentPath = widget.initialTask?.attachmentPath;
+    try {
+      if (_pendingPhoto case final photo?) {
+        attachmentPath = await TaskAttachmentService.savePhoto(photo);
+      } else if (_removePhoto) {
+        attachmentPath = null;
+      }
+    } on Exception catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal menyimpan foto: $error')));
+      }
+      return;
+    }
 
+    final task =
+        (widget.initialTask ??
+                Task(
+                  title: _titleController.text.trim(),
+                  course: _course!,
+                  deadline: _deadline!,
+                  priority: TaskPriority.normal,
+                ))
+            .copyWith(
+              title: _titleController.text.trim(),
+              course: _course!,
+              deadline: _deadline!,
+              attachmentPath: attachmentPath,
+              clearAttachment: attachmentPath == null,
+            );
+
+    if (!mounted) return;
     Navigator.pop(context, task);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEditing ? 'Edit Task' : 'Tambah Task'),
-      ),
+      appBar: AppBar(title: Text(_isEditing ? 'Edit Task' : 'Tambah Task')),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -110,23 +165,29 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 labelText: 'Nama tugas',
                 border: OutlineInputBorder(),
               ),
-              validator: (value) => Validators.minLength(
-                value,
-                3,
-                fieldName: 'Nama tugas',
-              ),
+              validator: (value) =>
+                  Validators.minLength(value, 3, fieldName: 'Nama tugas'),
             ),
             const SizedBox(height: 16),
-            TextFormField(
-              controller: _courseController,
+            DropdownButtonFormField<String>(
+              initialValue: _course,
               decoration: const InputDecoration(
                 labelText: 'Mata kuliah',
                 border: OutlineInputBorder(),
               ),
-              validator: (value) => Validators.required(
-                value,
-                fieldName: 'Mata kuliah',
-              ),
+              items:
+                  {
+                    ...widget.courseNames,
+                    if (widget.initialTask case final task?) task.course,
+                  }.map((name) {
+                    return DropdownMenuItem<String>(
+                      value: name,
+                      child: Text(name),
+                    );
+                  }).toList(),
+              validator: (value) =>
+                  Validators.required(value, fieldName: 'Mata kuliah'),
+              onChanged: (value) => setState(() => _course = value),
             ),
             const SizedBox(height: 16),
             OutlinedButton.icon(
@@ -136,38 +197,51 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 _deadline == null
                     ? 'Pilih deadline'
                     : '${_deadline!.day.toString().padLeft(2, '0')}/'
-                      '${_deadline!.month.toString().padLeft(2, '0')}/'
-                      '${_deadline!.year}',
+                          '${_deadline!.month.toString().padLeft(2, '0')}/'
+                          '${_deadline!.year}',
               ),
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<TaskPriority>(
-              initialValue: _priority,
-              decoration: const InputDecoration(
-                labelText: 'Prioritas',
-                border: OutlineInputBorder(),
-              ),
-              items: TaskPriority.values.map((priority) {
-                return DropdownMenuItem<TaskPriority>(
-                  value: priority,
-                  child: Text(priority.name.toUpperCase()),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _priority = value);
-                }
-              },
+            OutlinedButton.icon(
+              onPressed: _capturePhoto,
+              icon: const Icon(Icons.camera_alt_outlined),
+              label: const Text('Ambil foto soal'),
             ),
+            if (_pendingPhoto != null ||
+                (!_removePhoto && widget.initialTask?.attachmentPath != null))
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: TaskAttachmentImage(
+                        photo: _pendingPhoto,
+                        location: widget.initialTask?.attachmentPath,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) =>
+                            const Text('Foto lampiran tidak dapat dibuka.'),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => setState(() {
+                        _pendingPhoto = null;
+                        _removePhoto = true;
+                      }),
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Hapus foto'),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _saveTask,
-              icon: Icon(
-                _isEditing ? Icons.save_as_outlined : Icons.save,
-              ),
-              label: Text(
-                _isEditing ? 'Simpan Perubahan' : 'Simpan Task',
-              ),
+              icon: Icon(_isEditing ? Icons.save_as_outlined : Icons.save),
+              label: Text(_isEditing ? 'Simpan Perubahan' : 'Simpan Task'),
             ),
           ],
         ),

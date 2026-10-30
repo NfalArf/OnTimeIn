@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../data/course_repository.dart';
 import '../models/course.dart';
+import '../models/task.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
@@ -12,17 +13,26 @@ class CoursesScreen extends StatefulWidget {
   const CoursesScreen({
     super.key,
     required this.repository,
+    required this.tasks,
+    required this.onCourseRenamed,
   });
 
   final CourseRepository repository;
+  final List<Task> tasks;
+  final void Function(String oldName, String newName) onCourseRenamed;
 
   @override
   State<CoursesScreen> createState() => _CoursesScreenState();
 }
 
 class _CoursesScreenState extends State<CoursesScreen> {
-  
-  
+  bool _courseNameExists(String name, {String? excludingId}) {
+    return widget.repository.getCourses().any(
+      (course) =>
+          course.id != excludingId &&
+          course.name.toLowerCase() == name.trim().toLowerCase(),
+    );
+  }
 
 Future<void> _showAddCourseForm() async {
   final formKey = GlobalKey<FormState>();
@@ -53,6 +63,9 @@ Future<void> _showAddCourseForm() async {
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Nama mata kuliah wajib diisi';
+                        }
+                        if (_courseNameExists(value)) {
+                          return 'Nama mata kuliah sudah terdaftar';
                         }
                         return null;
                       },
@@ -157,6 +170,9 @@ Future<void> _showEditCourseForm(Course course) async {
                         if (value == null || value.trim().isEmpty) {
                           return 'Nama mata kuliah wajib diisi';
                         }
+                        if (_courseNameExists(value, excludingId: course.id)) {
+                          return 'Nama mata kuliah sudah terdaftar';
+                        }
                         return null;
                       },
                     ),
@@ -217,6 +233,9 @@ Future<void> _showEditCourseForm(Course course) async {
   setState(() {
     widget.repository.updateCourse(updatedCourse);
   });
+  if (course.name != updatedCourse.name) {
+    widget.onCourseRenamed(course.name, updatedCourse.name);
+  }
 
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(
@@ -226,6 +245,21 @@ Future<void> _showEditCourseForm(Course course) async {
 }
 
 Future<void> _deleteCourse(Course course) async {
+  final linkedTasks = widget.tasks
+      .where((task) => task.course == course.name)
+      .length;
+  if (linkedTasks > 0) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Mata kuliah ini masih digunakan oleh $linkedTasks tugas. '
+          'Ubah mata kuliah tugas sebelum menghapusnya.',
+        ),
+      ),
+    );
+    return;
+  }
+
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(

@@ -13,6 +13,7 @@ class Task {
     this.isCompleted = false,
     this.scratchpad,
     this.focusLogs = const [],
+    this.attachmentPath,
   });
 
   final int id;
@@ -23,6 +24,7 @@ class Task {
   final bool isCompleted;
   final Scratchpad? scratchpad;
   final List<FocusLog> focusLogs;
+  final String? attachmentPath;
 
   Task copyWith({
     int? id,
@@ -34,6 +36,8 @@ class Task {
     Scratchpad? scratchpad,
     bool clearScratchpad = false,
     List<FocusLog>? focusLogs,
+    String? attachmentPath,
+    bool clearAttachment = false,
   }) {
     return Task(
       id: id ?? this.id,
@@ -44,6 +48,9 @@ class Task {
       isCompleted: isCompleted ?? this.isCompleted,
       scratchpad: clearScratchpad ? null : scratchpad ?? this.scratchpad,
       focusLogs: focusLogs ?? this.focusLogs,
+      attachmentPath: clearAttachment
+          ? null
+          : attachmentPath ?? this.attachmentPath,
     );
   }
 }

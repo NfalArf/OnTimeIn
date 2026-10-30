@@ -4,24 +4,28 @@ import '../models/task.dart';
 class TaskRepository {
   static final List<Task> _tasks = [
     Task(
+      id: 1,
       title: 'Mobile Programming Assignment',
       course: 'Pemrograman Mobile',
       deadline: DateTime(2026, 10, 20, 23, 59),
       priority: TaskPriority.high,
     ),
     Task(
+      id: 2,
       title: 'Database Report',
       course: 'Basis Data',
       deadline: DateTime(2026, 10, 25, 23, 59),
       priority: TaskPriority.medium,
     ),
     Task(
+      id: 3,
       title: 'Read Chapter 4 and make notes',
       course: 'Human Computer Interaction',
       deadline: DateTime(2026, 10, 27, 10),
       priority: TaskPriority.normal,
     ),
     Task(
+      id: 4,
       title: 'Group presentation outline',
       course: 'Software Engineering',
       deadline: DateTime(2026, 10, 30, 16),

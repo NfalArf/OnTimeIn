@@ -7,7 +7,9 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 import '../utils/date_formatter.dart';
+import '../utils/task_management.dart';
 import '../widgets/scratchpad_sketch.dart';
+import '../widgets/task_attachment_image.dart';
 import 'focus_timer_screen.dart';
 import 'scratchpad_screen.dart';
 
@@ -124,7 +126,28 @@ class _DetailScreenState extends State<DetailScreen> {
               value: formatTaskDeadline(_task.deadline),
             ),
             const SizedBox(height: AppSpacing.lg),
-            _DetailRow(label: 'Priority', value: _task.priority.name),
+            _DetailRow(
+              label: 'Priority',
+              value: TaskManagement.priorityFor(_task).name,
+            ),
+            if (_task.attachmentPath case final attachmentPath?) ...[
+              const SizedBox(height: AppSpacing.lg),
+              Text('Foto soal', style: AppTextStyles.title),
+              const SizedBox(height: AppSpacing.sm),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppSpacing.smallRadius),
+                child: TaskAttachmentImage(
+                  location: attachmentPath,
+                  height: 220,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const Text(
+                    'Foto lampiran tidak dapat dibuka.',
+                    style: AppTextStyles.caption,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: AppSpacing.lg),
             _DetailRow(
               label: 'Status',
