@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../data/group_repository.dart';
+import '../models/group_session.dart';
 import '../models/scratchpad.dart';
 import '../models/task.dart';
 import '../routes/app_routes.dart';
@@ -9,6 +11,7 @@ import '../theme/app_text_styles.dart';
 import '../utils/date_formatter.dart';
 import '../widgets/scratchpad_sketch.dart';
 import 'focus_timer_screen.dart';
+import 'group/create_session_screen.dart';
 import 'scratchpad_screen.dart';
 
 class DetailScreen extends StatefulWidget {
@@ -87,6 +90,26 @@ class _DetailScreenState extends State<DetailScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Catatan berhasil disimpan')));
+  }
+
+  Future<void> _bukaBuatSesiKumpul() async {
+    final newSession = await Navigator.push<GroupSession>(
+      context,
+      MaterialPageRoute<GroupSession>(
+        builder: (_) => CreateSessionScreen(tasks: [_task]),
+      ),
+    );
+
+    if (newSession != null && mounted) {
+      GroupRepository.instance.addSession(newSession);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sesi "${newSession.title}" berhasil dibuat untuk tugas ini!',
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -212,6 +235,19 @@ class _DetailScreenState extends State<DetailScreen> {
               onPressed: _bukaFormCatatan,
               icon: const Icon(Icons.edit_note),
               label: const Text('Tulis Catatan'),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text('Kolaborasi Kelompok', style: AppTextStyles.title),
+            const SizedBox(height: AppSpacing.xs),
+            const Text(
+              'Rencanakan pertemuan kumpul bersama kelompok untuk tugas ini.',
+              style: AppTextStyles.caption,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            OutlinedButton.icon(
+              onPressed: _bukaBuatSesiKumpul,
+              icon: const Icon(Icons.groups_outlined),
+              label: const Text('Buat Sesi Kumpul Kelompok'),
             ),
           ],
         ),
