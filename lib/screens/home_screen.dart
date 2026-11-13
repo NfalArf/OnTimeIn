@@ -1,11 +1,23 @@
 import 'package:flutter/material.dart';
 
+import '../data/task_repository.dart';
+import '../models/scratchpad.dart';
 import '../models/task.dart';
+import '../routes/app_routes.dart';
+import '../screens/all_tasks_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
+import '../widgets/state_views.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/task_card.dart';
+import 'add_task_screen.dart';
+import 'courses.screen.dart';
+import '../data/course_repository.dart';
+import '../services/notification_service.dart';
+import 'focus_timer_screen.dart';
+import 'scratchpad_screen.dart';
+import 'group/group_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,33 +28,274 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  final List<Task> _tasks = [
-    const Task(
-      title: 'Mobile Programming Assignment',
-      course: 'Pemrograman Mobile',
-      deadline: 'Tomorrow, 23:59',
-      priority: TaskPriority.high,
-    ),
-    const Task(
-      title: 'Database Report',
-      course: 'Basis Data',
-      deadline: '25 Sep, 23:59',
-      priority: TaskPriority.medium,
-    ),
-    const Task(
-      title: 'Read Chapter 4 and make notes',
-      course: 'Human Computer Interaction',
-      deadline: '27 Sep, 10:00',
-      priority: TaskPriority.normal,
-    ),
-    const Task(
-      title: 'Group presentation outline',
-      course: 'Software Engineering',
-      deadline: '30 Sep, 16:00',
-      priority: TaskPriority.normal,
-      isCompleted: true,
-    ),
-  ];
+
+  final TaskRepository _repository = TaskRepository();
+  final CourseRepository _courseRepository = CourseRepository();
+
+  List<Task> _tasks = [];
+
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
+  }
+
+  Future<void> _loadTasks() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final tasks = await _repository.fetchTasks();
+
+      if (!mounted) return;
+
+      setState(() {
+        _tasks = List<Task>.of(tasks);
+        _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _addTask() async {
+    final newTask = await Navigator.push<Task>(
+      context,
+      MaterialPageRoute<Task>(builder: (_) => const AddTaskScreen()),
+    );
+
+    if (!mounted || newTask == null) return;
+
+    final taskId = _tasks.isEmpty
+        ? 1
+        : _tasks.map((task) => task.id).reduce((a, b) => a > b ? a : b) + 1;
+
+    final taskWithId = newTask.copyWith(id: taskId);
+
+    setState(() {
+      _tasks.add(taskWithId);
+      _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
+    });
+
+    // Jadwalkan pengingat setelah setState selesai.
+    await NotificationService.instance.scheduleDeadlineReminders(
+      taskId: taskWithId.id,
+      taskTitle: taskWithId.title,
+      deadline: taskWithId.deadline,
+    );
+
+    if (!mounted) return;
+
+    _showMessage('Task berhasil ditambahkan!');
+  }
+
+  void _toggleTask(Task task, bool? value) {
+    if (value == null) return;
+
+    final index = _tasks.indexWhere((item) => identical(item, task));
+
+    if (index == -1) return;
+
+    setState(() {
+      _tasks[index] = task.copyWith(isCompleted: value);
+    });
+  }
+
+  void _openAllTasks() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => AllTasksScreen(
+          tasks: _tasks,
+          onTaskChanged: (oldTask, updatedTask) {
+            final index = _tasks.indexWhere((item) => identical(item, oldTask));
+
+            if (index == -1) return;
+
+            setState(() {
+              _tasks[index] = updatedTask;
+              _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
+            });
+          },
+          onTaskTap: _openTaskDetail,
+          onTaskDeleted: _deleteTask,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTaskDetail(Task task) async {
+    final updatedTask = await Navigator.pushNamed<Task>(
+      context,
+      AppRoutes.detail,
+      arguments: task,
+    );
+    if (!mounted || updatedTask == null) return;
+    _replaceTask(task, updatedTask);
+  }
+
+  void _replaceTask(Task previousTask, Task updatedTask) {
+    final index = _tasks.indexWhere((item) => identical(item, previousTask));
+    if (index == -1) return;
+
+    setState(() => _tasks[index] = updatedTask);
+  }
+
+  Future<void> _editScratchpad(Task task) async {
+    final result = await Navigator.push<ScratchpadEditResult>(
+      context,
+      MaterialPageRoute<ScratchpadEditResult>(
+        builder: (_) => ScratchpadScreen(
+          initialScratchpad: task.scratchpad,
+          taskTitle: task.title,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+
+    _replaceTask(
+      task,
+      task.copyWith(
+        scratchpad: result.scratchpad,
+        clearScratchpad: result.isDeleted,
+      ),
+    );
+    _showMessage(
+      result.isDeleted
+          ? 'Scratchpad berhasil dihapus'
+          : 'Scratchpad berhasil disimpan',
+    );
+  }
+
+  Future<void> _deleteScratchpad(Task task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus Scratchpad?'),
+        content: const Text(
+          'Catatan, referensi, dan sketsa pada tugas ini akan dihapus.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.coral),
+            child: const Text('Hapus Scratchpad'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    _replaceTask(task, task.copyWith(clearScratchpad: true));
+    _showMessage('Scratchpad berhasil dihapus');
+  }
+
+  Future<void> _startFocus(Task task) async {
+    final updatedTask = await Navigator.push<Task>(
+      context,
+      MaterialPageRoute<Task>(builder: (_) => FocusTimerScreen(task: task)),
+    );
+    if (!mounted || updatedTask == null) return;
+
+    _replaceTask(task, updatedTask);
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _editTask(Task task) async {
+    final updatedTask = await Navigator.push<Task>(
+      context,
+      MaterialPageRoute<Task>(builder: (_) => AddTaskScreen(initialTask: task)),
+    );
+
+    if (!mounted || updatedTask == null) return;
+
+    final index = _tasks.indexWhere((item) => identical(item, task));
+
+    if (index == -1) return;
+
+    // Pertahankan ID tugas agar notifikasinya tetap terhubung.
+    final taskWithId = updatedTask.copyWith(id: task.id);
+
+    setState(() {
+      _tasks[index] = taskWithId;
+      _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
+    });
+
+    await NotificationService.instance.scheduleDeadlineReminders(
+      taskId: taskWithId.id,
+      taskTitle: taskWithId.title,
+      deadline: taskWithId.deadline,
+    );
+
+    if (!mounted) return;
+
+    _showMessage('Task berhasil diperbarui!');
+  }
+
+  Future<void> _deleteTask(Task task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus Task?'),
+        content: Text(
+          'Task "${task.title}" akan dihapus. '
+          'Apakah kamu yakin?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext, false);
+            },
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext, true);
+            },
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    final index = _tasks.indexWhere((item) => identical(item, task));
+
+    if (index == -1) return;
+
+    setState(() {
+      _tasks.removeAt(index);
+    });
+
+    await NotificationService.instance.cancelReminders(task.id);
+
+    _showMessage('Task berhasil dihapus!');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,17 +304,22 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: IndexedStack(
           index: _selectedIndex,
+
           children: [
             _buildHomeContent(),
-            for (final label in const ['Tasks', 'Focus', 'Group', 'Profile'])
-              _PlaceholderTab(label: label),
+            const _PlaceholderTab(label: 'Tasks'),
+            _buildFocusContent(),
+            CoursesScreen(repository: _courseRepository),
+            GroupScreen(tasks: _tasks),
+            const _PlaceholderTab(label: 'Profile'),
           ],
         ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
+        onDestinationSelected: (index) {
+          setState(() => _selectedIndex = index);
+        },
         backgroundColor: AppColors.surface,
         indicatorColor: AppColors.primarySoft,
         height: 70,
@@ -82,6 +340,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Focus',
           ),
           NavigationDestination(
+            icon: Icon(Icons.menu_book_outlined),
+            selectedIcon: Icon(Icons.menu_book),
+            label: 'Mata Kuliah',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.groups_outlined),
             selectedIcon: Icon(Icons.groups),
             label: 'Group',
@@ -97,7 +360,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeContent() {
+    final orderedTasks = List<Task>.of(_tasks)
+      ..sort((a, b) => a.deadline.compareTo(b.deadline));
+
     final completedCount = _tasks.where((task) => task.isCompleted).length;
+
     final pendingCount = _tasks.length - completedCount;
 
     return ListView(
@@ -110,46 +377,168 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         _buildHeader(),
         const SizedBox(height: AppSpacing.xl),
-        SummaryCard(
-          pendingCount: pendingCount,
-          completedCount: completedCount,
-          totalCount: _tasks.length,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        FilledButton.icon(
-          onPressed: () =>
-              _showMessage('Add Task flow will be connected later.'),
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Add Task'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.ink,
-            foregroundColor: Colors.white,
-            minimumSize: const Size.fromHeight(52),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppSpacing.smallRadius),
+
+        if (_tasks.isNotEmpty) ...[
+          SummaryCard(
+            pendingCount: pendingCount,
+            completedCount: completedCount,
+            totalCount: _tasks.length,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+        ],
+
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _addTask,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add Task'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.ink,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSpacing.smallRadius),
+              ),
             ),
           ),
         ),
+
         const SizedBox(height: AppSpacing.xxl),
-        _SectionHeading(title: 'Closest deadline', actionLabel: 'View all'),
-        const SizedBox(height: AppSpacing.md),
-        TaskCard(
-          task: _tasks.first,
-          isFeatured: true,
-          onChanged: (value) => _toggleTask(0, value),
-        ),
-        const SizedBox(height: AppSpacing.xxl),
-        const _SectionHeading(title: 'Upcoming tasks'),
-        const SizedBox(height: AppSpacing.md),
-        for (var index = 1; index < _tasks.length; index++) ...[
-          TaskCard(
-            task: _tasks[index],
-            onChanged: (value) => _toggleTask(index, value),
+
+        if (_isLoading) ...[
+          const LoadingView(),
+        ] else if (_errorMessage != null) ...[
+          ErrorView(message: _errorMessage!, onRetry: _loadTasks),
+        ] else if (orderedTasks.isEmpty) ...[
+          const EmptyView(message: 'Belum ada task. Tambahkan task pertamamu!'),
+        ] else ...[
+          _SectionHeading(
+            title: 'Closest deadline',
+            actionLabel: 'View all',
+            onAction: _openAllTasks,
           ),
-          if (index < _tasks.length - 1) const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.md),
+
+          TaskCard(
+            task: orderedTasks.first,
+            isFeatured: true,
+            onChanged: (value) {
+              _toggleTask(orderedTasks.first, value);
+            },
+            onTap: () => _openTaskDetail(orderedTasks.first),
+            onEdit: () => _editTask(orderedTasks.first),
+            onDelete: () => _deleteTask(orderedTasks.first),
+            onScratchpadTap: () => _editScratchpad(orderedTasks.first),
+            onScratchpadDelete: () => _deleteScratchpad(orderedTasks.first),
+            onFocusTap: () => _startFocus(orderedTasks.first),
+          ),
+
+          if (orderedTasks.length > 1) ...[
+            const SizedBox(height: AppSpacing.xxl),
+            const _SectionHeading(title: 'Upcoming tasks'),
+            const SizedBox(height: AppSpacing.md),
+
+            for (var index = 1; index < orderedTasks.length; index++) ...[
+              TaskCard(
+                task: orderedTasks[index],
+                onChanged: (value) {
+                  _toggleTask(orderedTasks[index], value);
+                },
+                onTap: () {
+                  _openTaskDetail(orderedTasks[index]);
+                },
+                onEdit: () => _editTask(orderedTasks[index]),
+                onDelete: () => _deleteTask(orderedTasks[index]),
+                onScratchpadTap: () => _editScratchpad(orderedTasks[index]),
+                onScratchpadDelete: () =>
+                    _deleteScratchpad(orderedTasks[index]),
+                onFocusTap: () => _startFocus(orderedTasks[index]),
+              ),
+              if (index < orderedTasks.length - 1)
+                const SizedBox(height: AppSpacing.md),
+            ],
+          ],
         ],
       ],
     );
+  }
+
+  Widget _buildFocusContent() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.page,
+        AppSpacing.lg,
+        AppSpacing.page,
+        AppSpacing.xxl,
+      ),
+      children: [
+        const Text('Focus Timer', style: AppTextStyles.heading),
+        const SizedBox(height: AppSpacing.sm),
+        const Text(
+          'Pilih tugas untuk memulai sesi Pomodoro 25 menit.',
+          style: AppTextStyles.body,
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        if (_tasks.isEmpty)
+          const EmptyView(message: 'Tambahkan tugas sebelum mulai fokus.')
+        else
+          for (final task in _tasks) ...[
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppSpacing.radius),
+                border: Border.all(color: AppColors.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(task.title, style: AppTextStyles.title),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(task.course, style: AppTextStyles.caption),
+                  const SizedBox(height: AppSpacing.md),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.timer_outlined,
+                        size: 16,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      Expanded(
+                        child: Text(
+                          '${_formatFocusDuration(_totalFocusSeconds(task))} '
+                          'tercatat',
+                          style: AppTextStyles.caption,
+                        ),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: () => _startFocus(task),
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: const Text('Mulai'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+      ],
+    );
+  }
+
+  int _totalFocusSeconds(Task task) =>
+      task.focusLogs.fold<int>(0, (total, log) => total + log.durationSeconds);
+
+  String _formatFocusDuration(int seconds) {
+    final hours = seconds ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    final remainingSeconds = seconds % 60;
+    if (hours > 0) return '$hours jam $minutes menit';
+    if (minutes > 0) return '$minutes menit $remainingSeconds detik';
+    return '$seconds detik';
   }
 
   Widget _buildHeader() {
@@ -160,15 +549,16 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Good Morning, Naufal', style: AppTextStyles.heading),
+              Text('Good Morning, Sir', style: AppTextStyles.heading),
               SizedBox(height: AppSpacing.sm),
-              Text('Let\'s get your tasks done.', style: AppTextStyles.body),
+              Text("Let's get your tasks done.", style: AppTextStyles.body),
             ],
           ),
         ),
         IconButton(
-          onPressed: () =>
-              _showMessage('Notifications will be connected later.'),
+          onPressed: () {
+            _showMessage('Notifications will be connected later.');
+          },
           tooltip: 'Notifications',
           style: IconButton.styleFrom(
             backgroundColor: AppColors.surface,
@@ -182,24 +572,14 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
-
-  void _toggleTask(int index, bool? value) {
-    if (value == null) return;
-    setState(() => _tasks[index] = _tasks[index].copyWith(isCompleted: value));
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
 }
 
 class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({required this.title, this.actionLabel});
+  const _SectionHeading({required this.title, this.actionLabel, this.onAction});
 
   final String title;
   final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +588,7 @@ class _SectionHeading extends StatelessWidget {
         Expanded(child: Text(title, style: AppTextStyles.title)),
         if (actionLabel != null)
           TextButton(
-            onPressed: () {},
+            onPressed: onAction,
             child: Text(
               actionLabel!,
               style: const TextStyle(color: AppColors.primary),

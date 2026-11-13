@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 
-import 'screens/home_screen.dart';
+import 'routes/app_routes.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_text_styles.dart';
+import 'services/notification_service.dart';
 
-void main() {
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await NotificationService.instance.initialize();
+
   runApp(const OnTimeInApp());
 }
 
@@ -28,7 +34,11 @@ class OnTimeInApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      home: const HomeScreen(),
+
+      // [DIUBAH LANGKAH 6]
+      initialRoute: AppRoutes.login,
+      onGenerateRoute: AppRoutes.onGenerateRoute,
+      onUnknownRoute: AppRoutes.onUnknownRoute,
     );
   }
 }
