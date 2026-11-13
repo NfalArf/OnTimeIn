@@ -4,8 +4,17 @@ import 'package:nama_project/main.dart';
 import 'package:nama_project/widgets/scratchpad_sketch.dart';
 import 'package:nama_project/widgets/task_card.dart';
 
-Future<void> _signIn(WidgetTester tester) async {
-  await tester.pumpWidget(const OnTimeInApp());
+import 'support/fake_task_reminder_service.dart';
+import 'support/in_memory_app_data.dart';
+
+Future<InMemoryAppData> _signIn(WidgetTester tester) async {
+  final appData = InMemoryAppData.create();
+  await tester.pumpWidget(
+    OnTimeInApp(
+      dataRepository: appData.repository,
+      reminderService: FakeTaskReminderService(),
+    ),
+  );
   await tester.enterText(
     find.byType(TextFormField).at(0),
     'student@example.com',
@@ -16,13 +25,15 @@ Future<void> _signIn(WidgetTester tester) async {
   await tester.tap(find.text('Masuk'));
   await tester.pump(const Duration(seconds: 2));
   await tester.pumpAndSettle();
+  return appData;
 }
 
 void main() {
   testWidgets('scratchpad saved from home appears on its task card', (
     WidgetTester tester,
   ) async {
-    await _signIn(tester);
+    final appData = await _signIn(tester);
+    addTearDown(appData.dispose);
 
     await tester.drag(find.byType(ListView).first, const Offset(0, -260));
     await tester.pumpAndSettle();
@@ -97,7 +108,8 @@ void main() {
   testWidgets('scratchpad rejects an invalid URL and allows a valid link', (
     WidgetTester tester,
   ) async {
-    await _signIn(tester);
+    final appData = await _signIn(tester);
+    addTearDown(appData.dispose);
     await tester.drag(find.byType(ListView).first, const Offset(0, -260));
     await tester.pumpAndSettle();
     final scratchpadButton = find.text('Scratchpad').first;
@@ -130,7 +142,8 @@ void main() {
   testWidgets('focus timer can be opened from the Focus tab', (
     WidgetTester tester,
   ) async {
-    await _signIn(tester);
+    final appData = await _signIn(tester);
+    addTearDown(appData.dispose);
 
     await tester.tap(find.text('Focus').last);
     await tester.pumpAndSettle();

@@ -1,54 +1,20 @@
-
 import '../models/course.dart';
+import 'app_data_repository.dart';
 
 class CourseRepository {
-  final List<Course> _courses = [
-    const Course(
-      id: 'course-1',
-      name: 'Rekayasa Perangkat Lunak',
-      semester: 5,
-    ),
-    const Course(
-      id: 'course-2',
-      name: 'Basis Data',
-      semester: 5,
-    ),
-    const Course(
-      id: 'course-3',
-      name: 'Pemrograman Mobile',
-      semester: 5,
-    ),
-    const Course(
-      id: 'course-4',
-      name: 'Algoritma dan Pemrograman',
-      semester: 1,
-    ),
-    const Course(
-      id: 'course-5',
-      name: 'Struktur Data',
-      semester: 3,
-    ),
-  ];
+  CourseRepository({AppDataRepository? dataRepository})
+    : _dataRepository = dataRepository ?? AppDataRepository.instance;
 
-  List<Course> getCourses() {
-    return List<Course>.unmodifiable(_courses);
-  }
+  final AppDataRepository _dataRepository;
 
-  void addCourse(Course course) {
-    _courses.add(course);
-  }
+  Future<void> initialize() => _dataRepository.initialize();
 
-  void updateCourse(Course updatedCourse) {
-    final index = _courses.indexWhere(
-      (course) => course.id == updatedCourse.id,
-    );
+  List<Course> getCourses() => _dataRepository.courses;
 
-    if (index == -1) return;
+  Future<void> addCourse(Course course) => _dataRepository.addCourse(course);
 
-    _courses[index] = updatedCourse;
-  }
+  Future<void> updateCourse(Course updatedCourse) =>
+      _dataRepository.updateCourse(updatedCourse);
 
-  void deleteCourse(String id) {
-    _courses.removeWhere((course) => course.id == id);
-  }
+  Future<void> deleteCourse(String id) => _dataRepository.deleteCourse(id);
 }

@@ -2,26 +2,47 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_project/main.dart';
 
+import 'support/fake_task_reminder_service.dart';
+import 'support/in_memory_app_data.dart';
+
 void main() {
   testWidgets('validates and returns a note to the task detail', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const OnTimeInApp());
+    final appData = InMemoryAppData.create();
+    addTearDown(appData.dispose);
+    await tester.pumpWidget(
+      OnTimeInApp(
+        dataRepository: appData.repository,
+        reminderService: FakeTaskReminderService(),
+      ),
+    );
 
     await tester.enterText(
       find.byType(TextFormField).at(0),
       'naufal@example.com',
     );
     await tester.enterText(find.byType(TextFormField).at(1), 'password123');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Masuk'));
     await tester.tap(find.widgetWithText(FilledButton, 'Masuk'));
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Mobile Programming Assignment').first);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -700));
+    await tester.pumpAndSettle();
+    final taskTitle = find.text('Mobile Programming Assignment').first;
+    await tester.ensureVisible(taskTitle);
+    await tester.pumpAndSettle();
+    await tester.tap(taskTitle);
     await tester.pumpAndSettle();
     expect(find.text('Task Detail'), findsOneWidget);
 
-    await tester.tap(find.text('Tulis Catatan'));
+    await tester.drag(find.byType(ListView).last, const Offset(0, -700));
+    await tester.pumpAndSettle();
+    final noteButton = find.text('Tulis Catatan');
+    await tester.ensureVisible(noteButton);
+    await tester.pumpAndSettle();
+    await tester.tap(noteButton);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Simpan'));
     await tester.pump();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/app_data_repository.dart';
 import '../models/task.dart';
 import '../screens/add_task_screen.dart';
 import '../screens/catatan_form_screen.dart';
@@ -7,6 +8,7 @@ import '../screens/detail_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/not_found_screen.dart';
+import '../services/notification_service.dart';
 
 class AppRoutes {
   AppRoutes._();
@@ -18,7 +20,11 @@ class AppRoutes {
   static const String detail = '/detail';
   static const String catatanForm = '/catatan-form';
 
-  static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
+  static Route<dynamic>? onGenerateRoute(
+    RouteSettings settings, {
+    AppDataRepository? dataRepository,
+    TaskReminderService? reminderService,
+  }) {
     switch (settings.name) {
       case login:
         return MaterialPageRoute<void>(
@@ -28,7 +34,10 @@ class AppRoutes {
 
       case home:
         return MaterialPageRoute<void>(
-          builder: (_) => const HomeScreen(),
+          builder: (_) => HomeScreen(
+            dataRepository: dataRepository,
+            reminderService: reminderService,
+          ),
           settings: settings,
         );
 

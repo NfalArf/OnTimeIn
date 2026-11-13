@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import '../data/course_repository.dart';
@@ -7,7 +6,6 @@ import '../models/task.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
-
 
 class CoursesScreen extends StatefulWidget {
   const CoursesScreen({
@@ -26,6 +24,28 @@ class CoursesScreen extends StatefulWidget {
 }
 
 class _CoursesScreenState extends State<CoursesScreen> {
+  bool _isLoading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCourses();
+  }
+
+  Future<void> _loadCourses() async {
+    try {
+      await widget.repository.initialize();
+      if (mounted) setState(() => _isLoading = false);
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = error.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
   bool _courseNameExists(String name, {String? excludingId}) {
     return widget.repository.getCourses().any(
       (course) =>
@@ -34,271 +54,307 @@ class _CoursesScreenState extends State<CoursesScreen> {
     );
   }
 
-Future<void> _showAddCourseForm() async {
-  final formKey = GlobalKey<FormState>();
-  final nameController = TextEditingController();
-  int selectedSemester = 1;
+  Future<void> _showAddCourseForm() async {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController();
+    int selectedSemester = 1;
 
-  final newCourse = await showDialog<Course>(
-    context: context,
-    builder: (dialogContext) {
-      return StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Tambah Mata Kuliah'),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nama Mata Kuliah',
-                        hintText: 'Contoh: Basis Data',
-                        border: OutlineInputBorder(),
+    final newCourse = await showDialog<Course>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Tambah Mata Kuliah'),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nama Mata Kuliah',
+                          hintText: 'Contoh: Basis Data',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Nama mata kuliah wajib diisi';
+                          }
+                          if (_courseNameExists(value)) {
+                            return 'Nama mata kuliah sudah terdaftar';
+                          }
+                          return null;
+                        },
                       ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Nama mata kuliah wajib diisi';
-                        }
-                        if (_courseNameExists(value)) {
-                          return 'Nama mata kuliah sudah terdaftar';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<int>(
-                      initialValue: selectedSemester,
-                      decoration: const InputDecoration(
-                        labelText: 'Semester',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: List.generate(8, (index) {
-                        final semester = index + 1;
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<int>(
+                        initialValue: selectedSemester,
+                        decoration: const InputDecoration(
+                          labelText: 'Semester',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: List.generate(8, (index) {
+                          final semester = index + 1;
 
-                        return DropdownMenuItem<int>(
-                          value: semester,
-                          child: Text('Semester $semester'),
-                        );
-                      }),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setDialogState(() {
-                            selectedSemester = value;
-                          });
-                        }
-                      },
-                    ),
-                  ],
+                          return DropdownMenuItem<int>(
+                            value: semester,
+                            child: Text('Semester $semester'),
+                          );
+                        }),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() {
+                              selectedSemester = value;
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                },
-                child: const Text('Batal'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  if (!formKey.currentState!.validate()) return;
-
-                  final course = Course(
-                    id: DateTime.now()
-                        .microsecondsSinceEpoch
-                        .toString(),
-                    name: nameController.text.trim(),
-                    semester: selectedSemester,
-                  );
-
-                  Navigator.pop(dialogContext, course);
-                },
-                child: const Text('Simpan'),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
-
-
-  if (!mounted || newCourse == null) return;
-
-  setState(() {
-    widget.repository.addCourse(newCourse);
-  });
-
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Mata kuliah berhasil ditambahkan!'),
-    ),
-  );
-}
-
-
-Future<void> _showEditCourseForm(Course course) async {
-  final formKey = GlobalKey<FormState>();
-  final nameController = TextEditingController(text: course.name);
-  int selectedSemester = course.semester;
-
-  final updatedCourse = await showDialog<Course>(
-    context: context,
-    builder: (dialogContext) {
-      return StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Edit Mata Kuliah'),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nama Mata Kuliah',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Nama mata kuliah wajib diisi';
-                        }
-                        if (_courseNameExists(value, excludingId: course.id)) {
-                          return 'Nama mata kuliah sudah terdaftar';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<int>(
-                      initialValue: selectedSemester,
-                      decoration: const InputDecoration(
-                        labelText: 'Semester',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: List.generate(8, (index) {
-                        final semester = index + 1;
-                        return DropdownMenuItem<int>(
-                          value: semester,
-                          child: Text('Semester $semester'),
-                        );
-                      }),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setDialogState(() {
-                            selectedSemester = value;
-                          });
-                        }
-                      },
-                    ),
-                  ],
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('Batal'),
                 ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Batal'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  if (!formKey.currentState!.validate()) return;
+                FilledButton(
+                  onPressed: () {
+                    if (!formKey.currentState!.validate()) return;
 
-                  Navigator.pop(
-                    dialogContext,
-                    course.copyWith(
+                    final course = Course(
+                      id: DateTime.now().microsecondsSinceEpoch.toString(),
                       name: nameController.text.trim(),
                       semester: selectedSemester,
-                    ),
-                  );
-                },
-                child: const Text('Simpan'),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
+                    );
 
-  if (!mounted || updatedCourse == null) return;
+                    Navigator.pop(dialogContext, course);
+                  },
+                  child: const Text('Simpan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
 
-  setState(() {
-    widget.repository.updateCourse(updatedCourse);
-  });
-  if (course.name != updatedCourse.name) {
-    widget.onCourseRenamed(course.name, updatedCourse.name);
+    if (!mounted || newCourse == null) return;
+
+    try {
+      await widget.repository.addCourse(newCourse);
+      if (mounted) setState(() {});
+    } on Exception catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal menyimpan mata kuliah: $error')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Mata kuliah berhasil ditambahkan!')),
+    );
   }
 
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Mata kuliah berhasil diperbarui!'),
-    ),
-  );
-}
+  Future<void> _showEditCourseForm(Course course) async {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController(text: course.name);
+    int selectedSemester = course.semester;
 
-Future<void> _deleteCourse(Course course) async {
-  final linkedTasks = widget.tasks
-      .where((task) => task.course == course.name)
-      .length;
-  if (linkedTasks > 0) {
+    final updatedCourse = await showDialog<Course>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Mata Kuliah'),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nama Mata Kuliah',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Nama mata kuliah wajib diisi';
+                          }
+                          if (_courseNameExists(
+                            value,
+                            excludingId: course.id,
+                          )) {
+                            return 'Nama mata kuliah sudah terdaftar';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<int>(
+                        initialValue: selectedSemester,
+                        decoration: const InputDecoration(
+                          labelText: 'Semester',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: List.generate(8, (index) {
+                          final semester = index + 1;
+                          return DropdownMenuItem<int>(
+                            value: semester,
+                            child: Text('Semester $semester'),
+                          );
+                        }),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() {
+                              selectedSemester = value;
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Batal'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (!formKey.currentState!.validate()) return;
+
+                    Navigator.pop(
+                      dialogContext,
+                      course.copyWith(
+                        name: nameController.text.trim(),
+                        semester: selectedSemester,
+                      ),
+                    );
+                  },
+                  child: const Text('Simpan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || updatedCourse == null) return;
+
+    try {
+      await widget.repository.updateCourse(updatedCourse);
+      if (mounted) setState(() {});
+    } on Exception catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memperbarui mata kuliah: $error')),
+        );
+      }
+      return;
+    }
+    if (course.name != updatedCourse.name) {
+      widget.onCourseRenamed(course.name, updatedCourse.name);
+    }
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Mata kuliah ini masih digunakan oleh $linkedTasks tugas. '
-          'Ubah mata kuliah tugas sebelum menghapusnya.',
+      const SnackBar(content: Text('Mata kuliah berhasil diperbarui!')),
+    );
+  }
+
+  Future<void> _deleteCourse(Course course) async {
+    final linkedTasks = widget.tasks
+        .where((task) => task.course == course.name)
+        .length;
+    if (linkedTasks > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Mata kuliah ini masih digunakan oleh $linkedTasks tugas. '
+            'Ubah mata kuliah tugas sebelum menghapusnya.',
+          ),
         ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus Mata Kuliah?'),
+        content: Text('Mata kuliah "${course.name}" akan dihapus.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Hapus'),
+          ),
+        ],
       ),
     );
-    return;
+
+    if (!mounted || confirmed != true) return;
+
+    try {
+      await widget.repository.deleteCourse(course.id);
+      if (mounted) setState(() {});
+    } on Exception catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal menghapus mata kuliah: $error')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Mata kuliah berhasil dihapus!')),
+    );
   }
-
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Hapus Mata Kuliah?'),
-      content: Text(
-        'Mata kuliah "${course.name}" akan dihapus.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text('Batal'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(dialogContext, true),
-          child: const Text('Hapus'),
-        ),
-      ],
-    ),
-  );
-
-  if (!mounted || confirmed != true) return;
-
-  setState(() {
-    widget.repository.deleteCourse(course.id);
-  });
-
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Mata kuliah berhasil dihapus!'),
-    ),
-  );
-}
-
-
 
   @override
   Widget build(BuildContext context) {
-    final courses = widget.repository.getCourses();
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_loadError != null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Gagal memuat mata kuliah: $_loadError'),
+              const SizedBox(height: AppSpacing.md),
+              FilledButton(
+                onPressed: _loadCourses,
+                child: const Text('Coba lagi'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
+    final courses = widget.repository.getCourses();
 
     final Map<int, List<Course>> groupedCourses = {};
 
@@ -311,30 +367,25 @@ Future<void> _deleteCourse(Course course) async {
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
-      
-appBar: AppBar(
-  title: const Text('Mata Kuliah'),
-  backgroundColor: AppColors.canvas,
-  actions: [
-    IconButton(
-      onPressed: _showAddCourseForm,
-      icon: const Icon(Icons.add_rounded),
-      tooltip: 'Tambah Mata Kuliah',
-    ),
-  ],
-),
+
+      appBar: AppBar(
+        title: const Text('Mata Kuliah'),
+        backgroundColor: AppColors.canvas,
+        actions: [
+          IconButton(
+            onPressed: _showAddCourseForm,
+            icon: const Icon(Icons.add_rounded),
+            tooltip: 'Tambah Mata Kuliah',
+          ),
+        ],
+      ),
 
       body: courses.isEmpty
-          ? const Center(
-              child: Text('Belum ada mata kuliah.'),
-            )
+          ? const Center(child: Text('Belum ada mata kuliah.'))
           : ListView(
               padding: const EdgeInsets.all(AppSpacing.page),
               children: [
-                Text(
-                  'Daftar Mata Kuliah',
-                  style: AppTextStyles.heading,
-                ),
+                Text('Daftar Mata Kuliah', style: AppTextStyles.heading),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
                   '${courses.length} mata kuliah terdaftar',
@@ -343,22 +394,17 @@ appBar: AppBar(
                 const SizedBox(height: AppSpacing.xl),
 
                 for (final semester in semesters) ...[
-                  Text(
-                    'Semester $semester',
-                    style: AppTextStyles.title,
-                  ),
+                  Text('Semester $semester', style: AppTextStyles.title),
                   const SizedBox(height: AppSpacing.md),
 
-                  
-for (final course in groupedCourses[semester]!) ...[
-  _CourseCard(
-    course: course,
-    onEdit: () => _showEditCourseForm(course),
-    onDelete: () => _deleteCourse(course),
-  ),
-  const SizedBox(height: AppSpacing.md),
-],
-
+                  for (final course in groupedCourses[semester]!) ...[
+                    _CourseCard(
+                      course: course,
+                      onEdit: () => _showEditCourseForm(course),
+                      onDelete: () => _deleteCourse(course),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                  ],
 
                   const SizedBox(height: AppSpacing.md),
                 ],
@@ -367,7 +413,6 @@ for (final course in groupedCourses[semester]!) ...[
     );
   }
 }
-
 
 class _CourseCard extends StatelessWidget {
   const _CourseCard({
@@ -379,7 +424,6 @@ class _CourseCard extends StatelessWidget {
   final Course course;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-
 
   @override
   Widget build(BuildContext context) {
@@ -397,9 +441,7 @@ class _CourseCard extends StatelessWidget {
             height: 46,
             decoration: BoxDecoration(
               color: AppColors.primarySoft,
-              borderRadius: BorderRadius.circular(
-                AppSpacing.smallRadius,
-              ),
+              borderRadius: BorderRadius.circular(AppSpacing.smallRadius),
             ),
             child: const Icon(
               Icons.menu_book_rounded,
@@ -410,49 +452,47 @@ class _CourseCard extends StatelessWidget {
           Expanded(
             child: Text(
               course.name,
-              style: AppTextStyles.body.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(width: AppSpacing.sm),
-          
-PopupMenuButton<String>(
-  tooltip: 'Aksi mata kuliah',
-  onSelected: (value) {
-    if (value == 'edit') {
-      onEdit();
-    } else if (value == 'delete') {
-      onDelete();
-    }
-  },
-  itemBuilder: (context) => const [
-    PopupMenuItem(
-      value: 'edit',
-      child: Row(
-        children: [
-          Icon(Icons.edit_outlined),
-          SizedBox(width: 8),
-          Text('Edit'),
-        ],
-      ),
-    ),
-    PopupMenuItem(
-      value: 'delete',
-      child: Row(
-        children: [
-          Icon(Icons.delete_outline, color: Colors.red),
-          SizedBox(width: 8),
-          Text('Hapus'),
-        ],
-      ),
-    ),
-  ],
-  child: Icon(
-    Icons.more_vert,
-    color: AppColors.ink.withValues(alpha: 0.6),
-  ),
-),
+
+          PopupMenuButton<String>(
+            tooltip: 'Aksi mata kuliah',
+            onSelected: (value) {
+              if (value == 'edit') {
+                onEdit();
+              } else if (value == 'delete') {
+                onDelete();
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined),
+                    SizedBox(width: 8),
+                    Text('Edit'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Hapus'),
+                  ],
+                ),
+              ),
+            ],
+            child: Icon(
+              Icons.more_vert,
+              color: AppColors.ink.withValues(alpha: 0.6),
+            ),
+          ),
         ],
       ),
     );
