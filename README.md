@@ -1,30 +1,46 @@
 # OnTimeIn
 
-A new Flutter project.
+OnTimeIn is a Flutter task manager for academic assignments, courses, deadlines,
+and study progress.
 
-## Getting Started
+## Run and test
 
-This project is a starting point for a Flutter application.
+```shell
+flutter pub get
+flutter analyze
+flutter test
+flutter run
+```
 
-A few resources to get you started if this is your first Flutter project:
+## Local data
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Tasks and courses are stored together as JSON. Native apps use the application's
+support directory; the Web app uses browser `localStorage`, scoped to the
+current browser origin and not synced with native app data. The repository
+loads this data when the app starts and preserves task IDs, completion status,
+deadline, course, attachment path, scratchpad, and focus logs. Task photos are
+stored separately in the app's private directory on native platforms; the saved
+path is kept with the task.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The initial sample tasks use deadlines relative to the first app launch. Course
+deletion is prevented while a task still refers to that course. Renaming a
+course updates the linked tasks.
 
-## Modul 1 — Manajemen Tugas
+## Deadline and daily reminders
 
-- Prioritas dihitung saat ditampilkan: tugas selesai berprioritas normal,
-  deadline terlewat atau maksimal 24 jam berprioritas tinggi, maksimal 3 hari
-  berprioritas sedang, dan selebihnya normal.
-- Daftar tugas dan mata kuliah masih menggunakan penyimpanan in-memory. Foto
-  disimpan di direktori aplikasi pada perangkat native dan sebagai data gambar
-  pada web; referensi foto ikut hilang ketika data tugas di memori hilang.
-  Penyimpanan tugas permanen belum diimplementasikan.
-- Mata kuliah tidak dapat dihapus selama masih dipakai tugas; ubah mata kuliah
-  tugas terlebih dahulu. Mengganti nama mata kuliah juga memperbarui nama pada
-  tugas yang terkait selama sesi aplikasi berjalan.
+Deadline reminders are scheduled for H-3, H-1, and the deadline day at 09.00
+Asia/Jakarta. Past reminder times are skipped. Completed or deleted tasks have
+their deadline reminders cancelled.
+
+The daily reminder is a single summary for incomplete tasks due today and in
+the current week (Monday-Sunday). It is scheduled for each remaining day in the
+current and next week, and refreshed when data is loaded or changed and when
+the app resumes. On Android, notifications must be allowed in system settings.
+
+The Home screen shows today's and this week's active tasks alongside completion
+progress. The displayed progress is based on the same persisted task list used
+by the task screens and reminder scheduling.
+
+The `flutter_local_notifications` scheduling API is not supported on Web, so
+native notifications are skipped in the browser. Deadline and daily reminders
+remain enabled on supported native platforms.

@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+import '../data/app_data_repository.dart';
 import '../data/task_repository.dart';
 import '../models/scratchpad.dart';
 import '../models/task.dart';
@@ -16,22 +18,34 @@ import 'courses.screen.dart';
 import '../data/course_repository.dart';
 import '../services/notification_service.dart';
 import '../services/task_attachment_service.dart';
+import '../utils/task_date_windows.dart';
 import 'focus_timer_screen.dart';
 import 'scratchpad_screen.dart';
 import 'group/group_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.dataRepository, this.reminderService});
+
+  final AppDataRepository? dataRepository;
+  final TaskReminderService? reminderService;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
 
-  final TaskRepository _repository = TaskRepository();
-  final CourseRepository _courseRepository = CourseRepository();
+  late final AppDataRepository _dataRepository =
+      widget.dataRepository ?? AppDataRepository.instance;
+  late final TaskRepository _repository = TaskRepository(
+    dataRepository: _dataRepository,
+  );
+  late final CourseRepository _courseRepository = CourseRepository(
+    dataRepository: _dataRepository,
+  );
+  late final TaskReminderService _reminderService =
+      widget.reminderService ?? NotificationService.instance;
 
   List<Task> _tasks = [];
 
@@ -46,7 +60,19 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadTasks();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadTasks();
   }
 
   Future<void> _loadTasks() async {
@@ -64,6 +90,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _tasks = List<Task>.of(tasks);
         _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
       });
+      await _refreshReminders();
+      if (mounted && !_reminderService.notificationsEnabled && !kIsWeb) {
+        _showMessage('Izin notifikasi belum diberikan.');
+      }
     } catch (error) {
       if (!mounted) return;
 
@@ -89,39 +119,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted || newTask == null) return;
 
-    final taskId = _tasks.isEmpty
-        ? 1
-        : _tasks.map((task) => task.id).reduce((a, b) => a > b ? a : b) + 1;
+    late Task taskWithId;
+    try {
+      taskWithId = await _repository.addTask(newTask);
+    } on Exception catch (error) {
+      if (mounted) _showMessage('Gagal menyimpan tugas: $error');
+      return;
+    }
 
-    final taskWithId = newTask.copyWith(id: taskId);
-
+    if (!mounted) return;
     setState(() {
       _tasks.add(taskWithId);
       _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
     });
-
-    // Jadwalkan pengingat setelah setState selesai.
-    await NotificationService.instance.scheduleDeadlineReminders(
-      taskId: taskWithId.id,
-      taskTitle: taskWithId.title,
-      deadline: taskWithId.deadline,
-    );
+    await _refreshReminders();
 
     if (!mounted) return;
 
     _showMessage('Task berhasil ditambahkan!');
   }
 
-  void _toggleTask(Task task, bool? value) {
+  Future<void> _toggleTask(Task task, bool? value) async {
     if (value == null) return;
 
-    final index = _tasks.indexWhere((item) => identical(item, task));
-
-    if (index == -1) return;
-
-    setState(() {
-      _tasks[index] = task.copyWith(isCompleted: value);
-    });
+    try {
+      await _updateTask(task.copyWith(isCompleted: value), previousTask: task);
+    } on Exception catch (error) {
+      if (mounted) _showMessage('Gagal memperbarui status tugas: $error');
+    }
   }
 
   void _openAllTasks() {
@@ -132,32 +157,10 @@ class _HomeScreenState extends State<HomeScreen> {
           tasks: _tasks,
           courseNames: _courseNames,
           onTaskChanged: (oldTask, updatedTask) async {
-            final index = _tasks.indexWhere((item) => identical(item, oldTask));
-
-            if (index == -1) return;
-
-            final taskWithId = updatedTask.copyWith(id: oldTask.id);
-            setState(() {
-              _tasks[index] = taskWithId;
-              _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
-            });
-            if (oldTask.attachmentPath != taskWithId.attachmentPath) {
-              try {
-                await TaskAttachmentService.deletePhoto(oldTask.attachmentPath);
-              } on Exception catch (error) {
-                if (mounted) {
-                  _showMessage('Foto lama tidak dapat dihapus: $error');
-                }
-              }
-            }
-            if (oldTask.title != taskWithId.title ||
-                oldTask.deadline != taskWithId.deadline) {
-              await NotificationService.instance.scheduleDeadlineReminders(
-                taskId: taskWithId.id,
-                taskTitle: taskWithId.title,
-                deadline: taskWithId.deadline,
-              );
-            }
+            await _updateTask(
+              updatedTask.copyWith(id: oldTask.id),
+              previousTask: oldTask,
+            );
           },
           onTaskTap: _openTaskDetail,
           onTaskDeleted: _deleteTask,
@@ -173,14 +176,18 @@ class _HomeScreenState extends State<HomeScreen> {
       arguments: task,
     );
     if (!mounted || updatedTask == null) return;
-    _replaceTask(task, updatedTask);
+    try {
+      await _replaceTask(task, updatedTask);
+    } on Exception catch (error) {
+      if (mounted) _showMessage('Gagal menyimpan perubahan tugas: $error');
+    }
   }
 
-  void _replaceTask(Task previousTask, Task updatedTask) {
-    final index = _tasks.indexWhere((item) => identical(item, previousTask));
+  Future<void> _replaceTask(Task previousTask, Task updatedTask) async {
+    final index = _tasks.indexWhere((item) => item.id == previousTask.id);
     if (index == -1) return;
 
-    setState(() => _tasks[index] = updatedTask);
+    await _updateTask(updatedTask, previousTask: previousTask);
   }
 
   Future<void> _editScratchpad(Task task) async {
@@ -195,13 +202,18 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (!mounted || result == null) return;
 
-    _replaceTask(
-      task,
-      task.copyWith(
-        scratchpad: result.scratchpad,
-        clearScratchpad: result.isDeleted,
-      ),
-    );
+    try {
+      await _replaceTask(
+        task,
+        task.copyWith(
+          scratchpad: result.scratchpad,
+          clearScratchpad: result.isDeleted,
+        ),
+      );
+    } on Exception catch (error) {
+      if (mounted) _showMessage('Gagal menyimpan scratchpad: $error');
+      return;
+    }
     _showMessage(
       result.isDeleted
           ? 'Scratchpad berhasil dihapus'
@@ -232,7 +244,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (!mounted || confirmed != true) return;
 
-    _replaceTask(task, task.copyWith(clearScratchpad: true));
+    try {
+      await _replaceTask(task, task.copyWith(clearScratchpad: true));
+    } on Exception catch (error) {
+      if (mounted) _showMessage('Gagal menghapus scratchpad: $error');
+      return;
+    }
     _showMessage('Scratchpad berhasil dihapus');
   }
 
@@ -243,7 +260,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (!mounted || updatedTask == null) return;
 
-    _replaceTask(task, updatedTask);
+    try {
+      await _replaceTask(task, updatedTask);
+    } on Exception catch (error) {
+      if (mounted) _showMessage('Gagal menyimpan waktu fokus: $error');
+    }
   }
 
   void _showMessage(String message) {
@@ -263,31 +284,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted || updatedTask == null) return;
 
-    final index = _tasks.indexWhere((item) => identical(item, task));
-
-    if (index == -1) return;
-
-    // Pertahankan ID tugas agar notifikasinya tetap terhubung.
-    final taskWithId = updatedTask.copyWith(id: task.id);
-
-    setState(() {
-      _tasks[index] = taskWithId;
-      _tasks.sort((a, b) => a.deadline.compareTo(b.deadline));
-    });
-
-    if (task.attachmentPath != taskWithId.attachmentPath) {
-      try {
-        await TaskAttachmentService.deletePhoto(task.attachmentPath);
-      } on Exception catch (error) {
-        if (mounted) _showMessage('Foto lama tidak dapat dihapus: $error');
-      }
+    try {
+      await _updateTask(updatedTask.copyWith(id: task.id), previousTask: task);
+    } on Exception catch (error) {
+      if (mounted) _showMessage('Gagal memperbarui tugas: $error');
+      return;
     }
-
-    await NotificationService.instance.scheduleDeadlineReminders(
-      taskId: taskWithId.id,
-      taskTitle: taskWithId.title,
-      deadline: taskWithId.deadline,
-    );
 
     if (!mounted) return;
 
@@ -322,24 +324,75 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted || confirmed != true) return;
 
-    final index = _tasks.indexWhere((item) => identical(item, task));
+    try {
+      await _repository.deleteTask(task.id);
+    } on Exception catch (error) {
+      if (mounted) _showMessage('Gagal menghapus tugas: $error');
+      return;
+    }
 
-    if (index == -1) return;
-
+    if (!mounted) return;
     setState(() {
-      _tasks.removeAt(index);
+      _tasks.removeWhere((item) => item.id == task.id);
     });
 
     try {
-      await NotificationService.instance.cancelReminders(task.id);
+      await _reminderService.cancelReminders(task.id);
       await TaskAttachmentService.deletePhoto(task.attachmentPath);
     } on Exception catch (error) {
       if (mounted) {
         _showMessage('Task dihapus, tetapi pembersihan data gagal: $error');
       }
     }
+    await _refreshDailyReminders();
 
     if (mounted) _showMessage('Task berhasil dihapus!');
+  }
+
+  Future<void> _updateTask(
+    Task updatedTask, {
+    required Task previousTask,
+  }) async {
+    await _repository.updateTask(updatedTask);
+    if (!mounted) return;
+    final index = _tasks.indexWhere((task) => task.id == previousTask.id);
+    if (index == -1) return;
+    setState(() {
+      _tasks[index] = updatedTask;
+      _tasks.sort((first, second) => first.deadline.compareTo(second.deadline));
+    });
+
+    if (previousTask.attachmentPath != updatedTask.attachmentPath) {
+      try {
+        await TaskAttachmentService.deletePhoto(previousTask.attachmentPath);
+      } on Exception catch (error) {
+        if (mounted) _showMessage('Foto lama tidak dapat dihapus: $error');
+      }
+    }
+
+    try {
+      await _reminderService.syncTaskReminders(updatedTask);
+      await _refreshDailyReminders();
+    } on Exception catch (error) {
+      if (mounted) {
+        _showMessage('Tugas tersimpan, tetapi reminder gagal: $error');
+      }
+    }
+  }
+
+  Future<void> _refreshReminders() async {
+    try {
+      for (final task in _tasks) {
+        await _reminderService.syncTaskReminders(task);
+      }
+      await _refreshDailyReminders();
+    } on Exception catch (error) {
+      if (mounted) _showMessage('Tugas dimuat, tetapi reminder gagal: $error');
+    }
+  }
+
+  Future<void> _refreshDailyReminders() async {
+    await _reminderService.refreshDailyReminders(_tasks);
   }
 
   @override
@@ -440,11 +493,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
         ],
+        _buildDueSummary(),
+        const SizedBox(height: AppSpacing.lg),
 
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: _addTask,
+            onPressed: _isLoading ? null : _addTask,
             icon: const Icon(Icons.add_rounded),
             label: const Text('Add Task'),
             style: FilledButton.styleFrom(
@@ -515,6 +570,73 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ],
       ],
+    );
+  }
+
+  Widget _buildDueSummary() {
+    final today = DateTime.now();
+    final todayTasks = TaskDateWindows.dueToday(_tasks, now: today);
+    final weekTasks = TaskDateWindows.dueThisWeek(_tasks, now: today);
+    final laterThisWeek = weekTasks.where(
+      (task) =>
+          TaskDateWindows.dateOnly(task.deadline) !=
+          TaskDateWindows.dateOnly(today),
+    );
+
+    Widget section(String title, List<Task> tasks, String emptyMessage) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: AppTextStyles.title),
+          const SizedBox(height: AppSpacing.xs),
+          if (tasks.isEmpty)
+            Text(emptyMessage, style: AppTextStyles.caption)
+          else
+            for (final task in tasks.take(3))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Text(
+                  '• ${task.title} — ${task.course}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body,
+                ),
+              ),
+          if (tasks.length > 3)
+            Text(
+              '+ ${tasks.length - 3} tugas lainnya',
+              style: AppTextStyles.caption,
+            ),
+        ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radius),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          section(
+            'Hari ini · ${todayTasks.length}',
+            todayTasks,
+            'Tidak ada tugas aktif hari ini.',
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          section(
+            'Minggu ini · ${weekTasks.length}',
+            laterThisWeek.toList(),
+            weekTasks.isEmpty
+                ? 'Tidak ada tugas aktif minggu ini.'
+                : 'Tidak ada tugas lain minggu ini.',
+          ),
+        ],
+      ),
     );
   }
 

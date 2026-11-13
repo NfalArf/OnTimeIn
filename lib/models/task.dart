@@ -26,6 +26,49 @@ class Task {
   final List<FocusLog> focusLogs;
   final String? attachmentPath;
 
+  factory Task.fromJson(Map<String, dynamic> json) {
+    final priorityName = json['priority'];
+    final priority = TaskPriority.values.where(
+      (value) => value.name == priorityName,
+    );
+    if (priority.isEmpty) {
+      throw FormatException('Prioritas tugas tidak dikenal: $priorityName');
+    }
+
+    return Task(
+      id: json['id'] as int,
+      title: json['title'] as String,
+      course: json['course'] as String,
+      deadline: DateTime.parse(json['deadline'] as String),
+      priority: priority.first,
+      isCompleted: json['isCompleted'] as bool? ?? false,
+      scratchpad: json['scratchpad'] == null
+          ? null
+          : Scratchpad.fromJson(
+              Map<String, dynamic>.from(json['scratchpad'] as Map),
+            ),
+      focusLogs: (json['focusLogs'] as List<dynamic>? ?? const [])
+          .map(
+            (value) =>
+                FocusLog.fromJson(Map<String, dynamic>.from(value as Map)),
+          )
+          .toList(),
+      attachmentPath: json['attachmentPath'] as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'title': title,
+    'course': course,
+    'deadline': deadline.toIso8601String(),
+    'priority': priority.name,
+    'isCompleted': isCompleted,
+    'scratchpad': scratchpad?.toJson(),
+    'focusLogs': focusLogs.map((log) => log.toJson()).toList(),
+    'attachmentPath': attachmentPath,
+  };
+
   Task copyWith({
     int? id,
     String? title,
